@@ -1,0 +1,41 @@
+[
+    {
+        "id": "addr_69b943b8e5f7f",
+        "user_id": 2,
+        "name": "测试",
+        "phone": "15110061111",
+        "province": "测1",
+        "city": "测1",
+        "district": "测1",
+        "address": "111111",
+        "is_default": true,
+        "created_at": "2026-03-17 20:06:16",
+        "updated_at": "2026-03-17 20:06:16"
+    },
+    {
+        "id": "addr_69ba8491f2f5c",
+        "user_id": 7,
+        "name": "学渣",
+        "phone": "15555555555",
+        "province": "河南",
+        "city": "新乡",
+        "district": "红旗区",
+        "address": "建业",
+        "is_default": true,
+        "created_at": "2026-03-18 18:55:13",
+        "updated_at": "2026-03-18 18:55:13"
+    },
+    {
+        "id": "addr_69d868027bd37",
+        "user_id": 54,
+        "name": "收货人姓名",
+        "phone": "19965463264",
+        "province": "省份",
+        "city": "城市",
+        "district": "区县",
+        "address": "详细地址",
+        "is_default": true,
+        "created_at": "2026-04-10 11:01:22",
+        "updated_at": "2026-04-10 11:01:22"
+    }
+]
