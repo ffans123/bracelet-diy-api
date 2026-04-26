@@ -48,6 +48,9 @@ app.use('/upload', require('./routes/upload'));
 // 管理后台兼容路由（适配 admin.html 的 /backend/api/xxx.php 请求）
 app.use('/backend/api', require('./routes/admin_compat'));
 
+// 批量迁移路由
+app.use('/migrate', require('./routes/migrate'));
+
 // 首页
 app.get('/', (req, res) => {
   res.json({

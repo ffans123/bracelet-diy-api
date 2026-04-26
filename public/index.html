@@ -2088,6 +2088,136 @@
                 console.log('登录后检查token:', getToken() ? '存在' : '不存在');
             };
 
+            // ========== 数据迁移面板 ==========
+            function MigrationPanel() {
+                const [status, setStatus] = useState(null);
+                const [loading, setLoading] = useState(false);
+                const [started, setStarted] = useState(false);
+
+                const loadStatus = async () => {
+                    try {
+                        const result = await api.get('/migrate/status');
+                        if (result.code === 200) {
+                            setStatus(result.data);
+                        }
+                    } catch (e) {
+                        console.error('获取迁移状态失败:', e);
+                    }
+                };
+
+                useEffect(() => {
+                    loadStatus();
+                    const interval = setInterval(loadStatus, 5000);
+                    return () => clearInterval(interval);
+                }, []);
+
+                const handleStart = async () => {
+                    if (!confirm('确定开始迁移吗？\n\n这将把七牛云上的 909 张图片下载并上传到微信云托管对象存储。\n迁移过程中请勿关闭页面。')) {
+                        return;
+                    }
+                    setLoading(true);
+                    setStarted(true);
+                    try {
+                        const result = await api.get('/migrate/start');
+                        if (result.code === 200) {
+                            alert('迁移任务已启动！\n请查看「运行日志」了解进度，本页面每 5 秒自动刷新状态。');
+                        } else {
+                            alert('启动失败: ' + result.message);
+                            setLoading(false);
+                        }
+                    } catch (e) {
+                        alert('启动失败: ' + e.message);
+                        setLoading(false);
+                    }
+                };
+
+                return (
+                    <div>
+                        <div className="card mb-6">
+                            <h2 className="text-xl font-bold mb-4">图片迁移工具</h2>
+                            <p className="text-gray-600 mb-4">
+                                将七牛云 CDN 上的珠子图片批量迁移到微信云托管对象存储（COS）。
+                                迁移后小程序端图片加载更稳定，管理后台上传也更可靠。
+                            </p>
+
+                            {status && (
+                                <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                                        <div>
+                                            <div className="text-2xl font-bold text-gray-800">{status.total}</div>
+                                            <div className="text-xs text-gray-500">珠子总数</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-2xl font-bold text-blue-600">{status.withImage}</div>
+                                            <div className="text-xs text-gray-500">有图片</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-2xl font-bold text-green-600">{status.cosUrls}</div>
+                                            <div className="text-xs text-gray-500">已迁移(COS)</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-2xl font-bold text-orange-600">{status.qiniuUrls}</div>
+                                            <div className="text-xs text-gray-500">待迁移(七牛云)</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4">
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span>迁移进度</span>
+                                            <span className="font-bold">{status.percent}%</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 rounded-full h-2">
+                                            <div
+                                                className="bg-green-500 h-2 rounded-full transition-all duration-500"
+                                                style={{ width: status.percent + '%' }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleStart}
+                                    disabled={loading || (status && status.percent >= 100)}
+                                    className={`btn ${status && status.percent >= 100 ? 'btn-secondary' : 'btn-primary'}`}
+                                >
+                                    {status && status.percent >= 100
+                                        ? '✅ 迁移已完成'
+                                        : started
+                                            ? (loading ? '⏳ 正在启动...' : '🚀 迁移进行中...')
+                                            : '🚀 开始迁移'
+                                    }
+                                </button>
+                                <button
+                                    onClick={loadStatus}
+                                    className="btn btn-secondary"
+                                >
+                                    🔄 刷新状态
+                                </button>
+                            </div>
+
+                            {started && !loading && (
+                                <div className="mt-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+                                    💡 迁移正在后台执行，每 5 秒自动刷新进度。<br/>
+                                    你也可以前往云托管控制台 →「运行日志」查看实时输出。
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="card">
+                            <h3 className="font-bold mb-2">注意事项</h3>
+                            <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
+                                <li>迁移前已自动备份 beads.json 到 beads.json.bak</li>
+                                <li>七牛云原始图片不会被删除，可随时回滚</li>
+                                <li>每张图片下载+上传约需 1-3 秒，全部 909 张预计 15-30 分钟</li>
+                                <li>迁移过程中可以正常使用管理后台，但不要新增/编辑珠子</li>
+                                <li>如果迁移中断，重新点击「开始迁移」会自动断点续传</li>
+                            </ul>
+                        </div>
+                    </div>
+                );
+            }
+
             const handleLogout = () => {
                 if (confirm('确定要退出登录吗？')) {
                     setToken(null);
@@ -2131,7 +2261,7 @@
                 { id: 'orders', name: '订单管理', icon: '📦' },
                 { id: 'beads', name: '盘珠管理', icon: '🔮' },
                 { id: 'users', name: '用户管理', icon: '👥' },
-                { id: 'designs', name: '设计管理', icon: '🎨' }
+                { id: 'migrate', name: '数据迁移', icon: '🚀' }
             ];
             
             const renderContent = () => {
@@ -2142,13 +2272,8 @@
                         return <BeadManagement />;
                     case 'users':
                         return <UserManagement />;
-                    case 'designs':
-                        return (
-                            <div className="card">
-                                <h2 className="text-xl font-bold">设计管理</h2>
-                                <p className="text-gray-600">设计管理功能开发中...</p>
-                            </div>
-                        );
+                    case 'migrate':
+                        return <MigrationPanel />;
                     default:
                         return <OrderManagement />;
                 }
