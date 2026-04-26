@@ -224,7 +224,13 @@ router.post('/change_password', (req, res) => {
 // POST /user/verify_token - 验证token
 router.post('/verify_token', (req, res) => {
   try {
-    const { token } = req.body;
+    // 优先从 header 获取，兼容 body 传参
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    let token = req.body.token;
+    if (authHeader) {
+      const match = authHeader.match(/Bearer\s+(.+)$/i);
+      if (match) token = match[1];
+    }
     if (!token) {
       return R.error(res, 'token不能为空');
     }

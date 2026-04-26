@@ -1,0 +1,380 @@
+/**
+ * 管理后台兼容路由层
+ * 将 admin.html 的 /backend/api/xxx/xxx.php 请求映射到 Express 后端功能
+ * 响应格式保持与旧 PHP 后端一致：{ code: 200, message: '...', data: ... }
+ */
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcryptjs');
+const db = require('../utils/jsonDB');
+const auth = require('../utils/auth');
+const R = require('../utils/response');
+
+// ========== 辅助函数 ==========
+function getTokenFromReq(req) {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  if (authHeader) {
+    const match = authHeader.match(/Bearer\s+(.+)$/i);
+    if (match) return match[1];
+  }
+  if (req.body && req.body.token) return req.body.token;
+  if (req.query && req.query.token) return req.query.token;
+  return null;
+}
+
+function requireAdmin(req, res, next) {
+  const token = getTokenFromReq(req);
+  if (!token) return R.unauthorized(res, '请先登录');
+  const payload = auth.verifyToken(token);
+  if (!payload) return R.unauthorized(res, '登录已过期');
+  const user = db.findUserById(payload.user_id);
+  if (!user) return R.unauthorized(res, '用户不存在');
+  if (user.role !== 'admin') return R.forbidden(res, '无权访问');
+  req.adminUser = user;
+  next();
+}
+
+// ========== 登录与认证 ==========
+
+// POST /backend/api/user/admin_login.php
+router.post('/user/admin_login.php', (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return R.error(res, '用户名和密码不能为空');
+    }
+    const user = db.findUserByUsername(username.trim());
+    if (!user) {
+      return R.error(res, '用户名或密码错误');
+    }
+    // 检查管理员权限
+    if (user.role !== 'admin') {
+      return R.error(res, '无权访问，非管理员账号');
+    }
+    const hash = user.password.replace(/^\$2y\$/, '$2a$');
+    if (!bcrypt.compareSync(password, hash)) {
+      return R.error(res, '用户名或密码错误');
+    }
+    delete user.password;
+    const token = auth.generateToken(user.id);
+    R.success(res, { token, user }, '登录成功');
+  } catch (e) {
+    R.serverError(res, '登录失败：' + e.message);
+  }
+});
+
+// GET /backend/api/user/verify_token.php
+router.get('/user/verify_token.php', (req, res) => {
+  try {
+    const token = getTokenFromReq(req);
+    if (!token) {
+      return R.error(res, 'token不能为空', 401);
+    }
+    const payload = auth.verifyToken(token);
+    if (!payload) {
+      return R.error(res, 'token无效或已过期', 401);
+    }
+    const user = db.findUserById(payload.user_id);
+    if (!user) {
+      return R.error(res, '用户不存在', 401);
+    }
+    delete user.password;
+    R.success(res, { valid: true, user }, '验证成功');
+  } catch (e) {
+    R.serverError(res, '验证失败：' + e.message);
+  }
+});
+
+// POST /backend/api/user/change_password.php
+router.post('/user/change_password.php', (req, res) => {
+  try {
+    const token = getTokenFromReq(req);
+    if (!token) return R.unauthorized(res);
+    const payload = auth.verifyToken(token);
+    if (!payload) return R.unauthorized(res);
+    const { old_password, new_password } = req.body;
+    const u = db.findUserById(payload.user_id);
+    if (!u) return R.error(res, '用户不存在');
+    const hash = u.password.replace(/^\$2y\$/, '$2a$');
+    if (!bcrypt.compareSync(old_password, hash)) {
+      return R.error(res, '原密码错误');
+    }
+    db.updateUser(payload.user_id, { password: bcrypt.hashSync(new_password, 10) });
+    R.success(res, null, '密码修改成功');
+  } catch (e) {
+    R.serverError(res, '修改失败：' + e.message);
+  }
+});
+
+// ========== 用户管理 ==========
+
+// GET /backend/api/user/list.php
+router.get('/user/list.php', requireAdmin, (req, res) => {
+  try {
+    const { keyword } = req.query;
+    let users = db.getUsers();
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      users = users.filter(u =>
+        (u.username && u.username.toLowerCase().includes(kw)) ||
+        (u.nickname && u.nickname.toLowerCase().includes(kw)) ||
+        (u.phone && u.phone.includes(kw))
+      );
+    }
+    // 移除密码字段
+    users = users.map(u => {
+      const { password, ...rest } = u;
+      return rest;
+    });
+    R.success(res, { list: users, total: users.length }, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
+  }
+});
+
+// POST /backend/api/user/delete.php
+router.post('/user/delete.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    const users = db.getUsers();
+    const filtered = users.filter(u => u.id != id);
+    if (filtered.length === users.length) {
+      return R.error(res, '用户不存在');
+    }
+    db.saveUsers(filtered);
+    R.success(res, null, '删除成功');
+  } catch (e) {
+    R.serverError(res, '删除失败：' + e.message);
+  }
+});
+
+// POST /backend/api/user/update.php
+router.post('/user/update.php', requireAdmin, (req, res) => {
+  try {
+    const { id, ...data } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    if (!db.updateUser(id, data)) {
+      return R.error(res, '用户不存在');
+    }
+    R.success(res, null, '更新成功');
+  } catch (e) {
+    R.serverError(res, '更新失败：' + e.message);
+  }
+});
+
+// POST /backend/api/user/recharge.php
+router.post('/user/recharge.php', requireAdmin, (req, res) => {
+  try {
+    const { user_id, amount } = req.body;
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) {
+      return R.error(res, '充值金额无效');
+    }
+    const u = db.findUserById(user_id);
+    if (!u) return R.error(res, '用户不存在');
+    const before = parseFloat(u.balance || 0);
+    const after = before + amt;
+    db.updateUser(user_id, { balance: after });
+    R.success(res, { before_balance: before, after_balance: after }, '充值成功');
+  } catch (e) {
+    R.serverError(res, '充值失败：' + e.message);
+  }
+});
+
+// ========== 订单管理 ==========
+
+// GET /backend/api/order/list.php
+router.get('/order/list.php', requireAdmin, (req, res) => {
+  try {
+    const { status, page = 1, pageSize = 1000 } = req.query;
+    let orders = db.getOrders();
+    if (status && status !== 'all') {
+      orders = orders.filter(o => o.status === status);
+    }
+    orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const total = orders.length;
+    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const list = orders.slice(offset, offset + parseInt(pageSize));
+
+    // 关联用户信息和设计信息
+    const users = db.getUsers();
+    const designs = db.getDesigns();
+    list.forEach(order => {
+      const user = users.find(u => u.id == order.user_id);
+      order.user = user ? { id: user.id, username: user.username, nickname: user.nickname } : null;
+      const design = designs.find(d => d.id == order.design_id);
+      if (design) {
+        order.design_name = design.name;
+        order.cover_image = design.cover_image || '';
+      }
+    });
+
+    R.success(res, { list, total, page: parseInt(page), pageSize: parseInt(pageSize) }, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
+  }
+});
+
+// GET /backend/api/order/detail.php
+router.get('/order/detail.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.query;
+    const order = db.findOrderById(id);
+    if (!order) return R.error(res, '订单不存在');
+    const design = db.findDesignById(order.design_id);
+    if (design) {
+      order.design_name = design.name;
+      let pattern = design.pattern;
+      if (typeof pattern === 'string') {
+        try { pattern = JSON.parse(pattern); } catch { pattern = []; }
+      }
+      order.pattern = pattern;
+      order.bead_details = db.parsePatternToBeadDetails(pattern);
+      order.cover_image = design.cover_image || '';
+    }
+    const user = db.findUserById(order.user_id);
+    if (user) {
+      order.user = { id: user.id, username: user.username, nickname: user.nickname, phone: user.phone };
+    }
+    R.success(res, order, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
+  }
+});
+
+// POST /backend/api/order/ship.php
+router.post('/order/ship.php', requireAdmin, (req, res) => {
+  try {
+    const { order_id, express_no, express_company } = req.body;
+    const order = db.findOrderById(order_id);
+    if (!order) return R.error(res, '订单不存在');
+    if (order.status !== 'paid') {
+      return R.error(res, '只有已付款订单可以发货');
+    }
+    db.updateOrder(order_id, {
+      status: 'shipped',
+      express_no: express_no || '',
+      express_company: express_company || '',
+      shipped_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    });
+    R.success(res, null, '发货成功');
+  } catch (e) {
+    R.serverError(res, '发货失败：' + e.message);
+  }
+});
+
+// POST /backend/api/order/update_status.php
+router.post('/order/update_status.php', requireAdmin, (req, res) => {
+  try {
+    const { order_id, status } = req.body;
+    const order = db.findOrderById(order_id);
+    if (!order) return R.error(res, '订单不存在');
+    const validStatuses = ['pending', 'paid', 'shipped', 'completed', 'cancelled', 'refunded'];
+    if (!validStatuses.includes(status)) {
+      return R.error(res, '无效的状态');
+    }
+    db.updateOrder(order_id, { status });
+    R.success(res, null, '状态更新成功');
+  } catch (e) {
+    R.serverError(res, '更新失败：' + e.message);
+  }
+});
+
+// POST /backend/api/order/delete.php
+router.post('/order/delete.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.body;
+    const orders = db.getOrders();
+    const filtered = orders.filter(o => o.id != id);
+    if (filtered.length === orders.length) {
+      return R.error(res, '订单不存在');
+    }
+    db.saveOrders(filtered);
+    R.success(res, null, '删除成功');
+  } catch (e) {
+    R.serverError(res, '删除失败：' + e.message);
+  }
+});
+
+// GET /backend/api/order/cleanup.php
+router.get('/order/cleanup.php', requireAdmin, (req, res) => {
+  try {
+    // 清理超过30天的已取消/已完成订单（软删除逻辑，这里直接物理删除）
+    const orders = db.getOrders();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const filtered = orders.filter(o => {
+      if (o.status !== 'cancelled' && o.status !== 'completed') return true;
+      const orderDate = new Date(o.created_at);
+      return orderDate > thirtyDaysAgo;
+    });
+    const removed = orders.length - filtered.length;
+    db.saveOrders(filtered);
+    R.success(res, { removed }, `清理完成，已删除 ${removed} 个过期订单`);
+  } catch (e) {
+    R.serverError(res, '清理失败：' + e.message);
+  }
+});
+
+// ========== 珠子管理 ==========
+
+// GET /backend/api/bead/list.php
+router.get('/bead/list.php', (req, res) => {
+  try {
+    const beads = db.getBeads();
+    R.success(res, beads, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
+  }
+});
+
+// POST /backend/api/bead/create.php
+router.post('/bead/create.php', requireAdmin, (req, res) => {
+  try {
+    const bead = req.body;
+    const id = db.addBead(bead);
+    if (!id) return R.serverError(res, '创建失败');
+    R.success(res, { id }, '创建成功');
+  } catch (e) {
+    R.serverError(res, '创建失败：' + e.message);
+  }
+});
+
+// POST /backend/api/bead/update.php
+router.post('/bead/update.php', requireAdmin, (req, res) => {
+  try {
+    const { id, ...data } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    if (!db.updateBead(id, data)) {
+      return R.error(res, '珠子不存在');
+    }
+    R.success(res, null, '更新成功');
+  } catch (e) {
+    R.serverError(res, '更新失败：' + e.message);
+  }
+});
+
+// POST /backend/api/bead/delete.php
+router.post('/bead/delete.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    if (!db.deleteBead(id)) {
+      return R.error(res, '珠子不存在');
+    }
+    R.success(res, null, '删除成功');
+  } catch (e) {
+    R.serverError(res, '删除失败：' + e.message);
+  }
+});
+
+// ========== 七牛云 Token ==========
+
+// GET /backend/api/get_qiniu_token.php
+// ⚠️ 已废弃：图片上传已迁移到微信云托管对象存储，请使用 POST /upload/image
+router.get('/get_qiniu_token.php', requireAdmin, (req, res) => {
+  R.error(res, '七牛云上传已废弃。图片上传请使用 POST /upload/image 接口（FormData 格式，字段名 file）', 410);
+});
+
+module.exports = router;

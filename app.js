@@ -28,6 +28,12 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 app.use('/uploads', express.static(UPLOAD_DIR));
 
+// 管理后台静态页面
+const ADMIN_DIR = path.join(__dirname, 'public');
+if (fs.existsSync(ADMIN_DIR)) {
+  app.use('/admin', express.static(ADMIN_DIR));
+}
+
 // 路由
 app.use('/user', require('./routes/user'));
 app.use('/bead', require('./routes/bead'));
@@ -38,6 +44,9 @@ app.use('/square', require('./routes/square'));
 app.use('/address', require('./routes/address'));
 app.use('/pay', require('./routes/pay'));
 app.use('/upload', require('./routes/upload'));
+
+// 管理后台兼容路由（适配 admin.html 的 /backend/api/xxx.php 请求）
+app.use('/backend/api', require('./routes/admin_compat'));
 
 // 首页
 app.get('/', (req, res) => {
