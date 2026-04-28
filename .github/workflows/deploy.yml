@@ -27,6 +27,9 @@ jobs:
       - name: Verify credentials
         run: tccli sts GetCallerIdentity
 
+      - name: List services in environment
+        run: tccli tcb DescribeCloudBaseRunServers --EnvId prod-d6gl3tboe2697ec1e
+
       - name: Deploy to CloudBase Run
         run: |
           tccli tcb CreateCloudBaseRunServerVersion \
