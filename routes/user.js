@@ -82,7 +82,7 @@ router.post('/register', (req, res) => {
 // POST /user/wx_login - 微信小程序登录
 router.post('/wx_login', async (req, res) => {
   try {
-    const { code } = req.body;
+    const { code, nickname, avatar } = req.body;
     if (!code) {
       return R.error(res, 'code不能为空');
     }
@@ -108,9 +108,20 @@ router.post('/wx_login', async (req, res) => {
         openid: openid,
         username: 'user_' + openid.slice(-8),
         password: bcrypt.hashSync(Date.now().toString(), 10),
+        nickname: nickname || '微信用户',
+        avatar: avatar || '',
         role: 'user'
       });
       user = db.findUserById(userId);
+    } else if (nickname || avatar) {
+      // 更新已有用户的昵称/头像
+      const updateData = {};
+      if (nickname && !user.nickname) updateData.nickname = nickname;
+      if (avatar && !user.avatar) updateData.avatar = avatar;
+      if (Object.keys(updateData).length > 0) {
+        db.updateUser(user.id, updateData);
+        user = db.findUserById(user.id);
+      }
     }
 
     delete user.password;
