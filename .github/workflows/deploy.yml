@@ -1,0 +1,42 @@
+name: Deploy to WeChat CloudBase Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install TCB CLI
+        run: npm install -g @cloudbase/cli
+
+      - name: Login to Tencent Cloud
+        run: tcb login --apiKeyId ${{ secrets.TENCENT_SECRET_ID }} --apiKey ${{ secrets.TENCENT_SECRET_KEY }}
+
+      - name: Set default environment
+        run: tcb env use prod-d6gl3tboe2697ec1e
+
+      - name: Deploy to CloudBase Run
+        run: |
+          tcb run service:deploy \
+            --serviceName express-df5d \
+            --containerPort 80 \
+            --path . \
+            --cpu 0.25 \
+            --mem 0.5 \
+            --minNum 1 \
+            --maxNum 10 \
+            --policyDetails cpu=60 \
+            --customLogs stdout \
+            --noConfirm \
+            --override
