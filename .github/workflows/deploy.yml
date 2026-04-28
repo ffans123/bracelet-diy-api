@@ -12,31 +12,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '20'
+          python-version: '3.x'
 
-      - name: Install TCB CLI
-        run: npm install -g @cloudbase/cli
+      - name: Install Tencent Cloud CLI
+        run: pip install tccli
 
-      - name: Login to Tencent Cloud
-        run: tcb login --apiKeyId ${{ secrets.TENCENT_SECRET_ID }} --apiKey ${{ secrets.TENCENT_SECRET_KEY }}
+      - name: Configure Tencent Cloud CLI
+        run: |
+          tccli configure set secretId ${{ secrets.TENCENT_SECRET_ID }} secretKey ${{ secrets.TENCENT_SECRET_KEY }} region ap-shanghai
 
-      - name: Set default environment
-        run: tcb env use prod-d6gl3tboe2697ec1e
+      - name: Verify credentials
+        run: tccli sts GetCallerIdentity
 
       - name: Deploy to CloudBase Run
         run: |
-          tcb run service:deploy \
-            --serviceName express-df5d \
-            --containerPort 80 \
-            --path . \
-            --cpu 0.25 \
-            --mem 0.5 \
-            --minNum 1 \
-            --maxNum 10 \
-            --policyDetails cpu=60 \
-            --customLogs stdout \
-            --noConfirm \
-            --override
+          tccli tcb CreateCloudBaseRunServerVersion \
+            --EnvId prod-d6gl3tboe2697ec1e \
+            --ServerName express-df5d \
+            --ContainerPort 80 \
+            --Cpu 0.25 \
+            --Mem 0.5 \
+            --MinNum 1 \
+            --MaxNum 10 \
+            --PolicyType cpu \
+            --PolicyThreshold 60 \
+            --CustomLogs stdout \
+            --Remark "auto-deploy-$(date +%Y%m%d-%H%M%S)"
