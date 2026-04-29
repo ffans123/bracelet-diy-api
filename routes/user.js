@@ -79,6 +79,28 @@ router.post('/register', (req, res) => {
   }
 });
 
+// POST /user/wx_login_demo - 演示登录（开发环境）
+router.post('/wx_login_demo', (req, res) => {
+  try {
+    let user = db.findUserByUsername('demo_user');
+    if (!user) {
+      const userId = db.addUser({
+        username: 'demo_user',
+        password: bcrypt.hashSync('demo123', 10),
+        nickname: '演示用户',
+        avatar: '',
+        role: 'user'
+      });
+      user = db.findUserById(userId);
+    }
+    delete user.password;
+    const token = auth.generateToken(user.id);
+    R.success(res, { token, user }, '演示登录成功');
+  } catch (e) {
+    R.serverError(res, '演示登录失败：' + e.message);
+  }
+});
+
 // POST /user/wx_login - 微信小程序登录
 router.post('/wx_login', async (req, res) => {
   try {

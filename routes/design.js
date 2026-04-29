@@ -67,6 +67,8 @@ router.get('/detail', (req, res) => {
 // POST /design/save - 保存设计
 router.post('/save', auth.requireAuth, (req, res) => {
   try {
+    console.log('[DESIGN SAVE] auth header:', req.headers.authorization);
+    console.log('[DESIGN SAVE] req.user:', req.user);
     const userId = req.user.id;
     const {
       name, pattern, mode = 'bracelet', perimeter = 0,
