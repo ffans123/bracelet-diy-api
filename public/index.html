@@ -2088,6 +2088,449 @@
                 console.log('登录后检查token:', getToken() ? '存在' : '不存在');
             };
 
+            // 地址管理组件
+            function AddressManagement() {
+                const [addresses, setAddresses] = useState([]);
+                const [loading, setLoading] = useState(true);
+                const [keyword, setKeyword] = useState('');
+
+                useEffect(() => {
+                    loadAddresses();
+                }, []);
+
+                const loadAddresses = async () => {
+                    try {
+                        const result = await api.get('/address/admin-list');
+                        if (result.code === 200) {
+                            setAddresses(result.data || []);
+                        }
+                    } catch (error) {
+                        console.error('加载地址失败:', error);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+
+                const handleDelete = async (id) => {
+                    if (!confirm('确定要删除该地址吗？')) return;
+                    try {
+                        const result = await api.post('/address/delete', { id });
+                        if (result.code === 200) {
+                            alert('删除成功');
+                            loadAddresses();
+                        } else {
+                            alert('删除失败：' + result.message);
+                        }
+                    } catch (error) {
+                        alert('删除失败：' + error.message);
+                    }
+                };
+
+                const filtered = addresses.filter(a => {
+                    if (!keyword) return true;
+                    const k = keyword.toLowerCase();
+                    return (a.name || '').toLowerCase().includes(k) ||
+                           (a.phone || '').includes(k) ||
+                           (a.address || '').toLowerCase().includes(k) ||
+                           (a.username || '').toLowerCase().includes(k);
+                });
+
+                return (
+                    <div className="card">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold">地址管理</h2>
+                            <div className="flex gap-4">
+                                <input
+                                    type="text"
+                                    placeholder="搜索收货人/手机号/地址"
+                                    value={keyword}
+                                    onChange={(e) => setKeyword(e.target.value)}
+                                    className="px-4 py-2 border rounded-lg"
+                                />
+                                <button onClick={loadAddresses} className="btn btn-primary">刷新</button>
+                            </div>
+                        </div>
+                        {loading ? (
+                            <div className="text-center py-8 text-gray-500">加载中...</div>
+                        ) : filtered.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">暂无地址数据</div>
+                        ) : (
+                            <table className="table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>收货人</th>
+                                        <th>手机号</th>
+                                        <th>省市区</th>
+                                        <th>详细地址</th>
+                                        <th>所属用户</th>
+                                        <th>默认</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filtered.map(addr => (
+                                        <tr key={addr.id}>
+                                            <td>{addr.id}</td>
+                                            <td>{addr.name}</td>
+                                            <td>{addr.phone}</td>
+                                            <td>{[addr.province, addr.city, addr.district].filter(Boolean).join(' ')}</td>
+                                            <td>{addr.address}</td>
+                                            <td>{addr.username || '-'}</td>
+                                            <td>{addr.is_default ? '是' : '否'}</td>
+                                            <td>
+                                                <button onClick={() => handleDelete(addr.id)} className="text-red-500 hover:text-red-700">删除</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                );
+            }
+
+            // 灵感管理组件
+            function SquareManagement() {
+                const [designs, setDesigns] = useState([]);
+                const [loading, setLoading] = useState(true);
+                const [searchKeyword, setSearchKeyword] = useState('');
+                const [filterPublic, setFilterPublic] = useState('all');
+                const [filterFeatured, setFilterFeatured] = useState('all');
+                const [editingDesign, setEditingDesign] = useState(null);
+                const [showEditModal, setShowEditModal] = useState(false);
+                const [detailDesign, setDetailDesign] = useState(null);
+                const [formData, setFormData] = useState({ name: '', price: '', is_featured: false });
+
+                useEffect(() => {
+                    loadDesigns();
+                }, []);
+
+                const loadDesigns = async () => {
+                    setLoading(true);
+                    try {
+                        const params = {};
+                        if (searchKeyword) params.keyword = searchKeyword;
+                        if (filterPublic !== 'all') params.isPublic = filterPublic;
+                        if (filterFeatured !== 'all') params.isFeatured = filterFeatured;
+                        const result = await api.get('/backend/api/square/list.php', params);
+                        if (result.code === 200) {
+                            setDesigns(result.data.list || []);
+                        } else {
+                            alert('加载失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        console.error('加载灵感失败:', error);
+                        alert('加载失败: ' + error.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+
+                const handleSearch = (e) => {
+                    e.preventDefault();
+                    loadDesigns();
+                };
+
+                const handleTogglePublic = async (design) => {
+                    try {
+                        const result = await api.post('/backend/api/square/toggle_public.php', { id: design.id });
+                        if (result.code === 200) {
+                            alert(result.message);
+                            loadDesigns();
+                        } else {
+                            alert('操作失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        alert('操作失败: ' + error.message);
+                    }
+                };
+
+                const handleToggleFeatured = async (design) => {
+                    try {
+                        const result = await api.post('/backend/api/square/toggle_featured.php', { id: design.id });
+                        if (result.code === 200) {
+                            alert(result.message);
+                            loadDesigns();
+                        } else {
+                            alert('操作失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        alert('操作失败: ' + error.message);
+                    }
+                };
+
+                const handleDelete = async (design) => {
+                    if (!confirm(`确定要删除设计「${design.name || '未命名'}」吗？此操作不可恢复！`)) return;
+                    try {
+                        const result = await api.post('/backend/api/square/delete.php', { id: design.id });
+                        if (result.code === 200) {
+                            alert('删除成功');
+                            loadDesigns();
+                        } else {
+                            alert('删除失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        alert('删除失败: ' + error.message);
+                    }
+                };
+
+                const handleEdit = (design) => {
+                    setEditingDesign(design);
+                    setFormData({
+                        name: design.name || '',
+                        price: design.price || '',
+                        is_featured: !!design.is_featured
+                    });
+                    setShowEditModal(true);
+                };
+
+                const handleEditSubmit = async (e) => {
+                    e.preventDefault();
+                    try {
+                        const result = await api.post('/backend/api/square/update.php', {
+                            id: editingDesign.id,
+                            name: formData.name,
+                            price: parseFloat(formData.price) || 0,
+                            is_featured: formData.is_featured ? 1 : 0
+                        });
+                        if (result.code === 200) {
+                            alert('更新成功');
+                            setShowEditModal(false);
+                            setEditingDesign(null);
+                            loadDesigns();
+                        } else {
+                            alert('更新失败: ' + result.message);
+                        }
+                    } catch (error) {
+                        alert('更新失败: ' + error.message);
+                    }
+                };
+
+                const handleViewDetail = async (design) => {
+                    try {
+                        const result = await api.get('/backend/api/square/detail.php', { id: design.id });
+                        if (result.code === 200) {
+                            setDetailDesign(result.data);
+                        } else {
+                            setDetailDesign(design);
+                        }
+                    } catch (error) {
+                        setDetailDesign(design);
+                    }
+                };
+
+                const getPublicBadge = (isPublic) => {
+                    return isPublic
+                        ? <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">已发布</span>
+                        : <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium">未发布</span>;
+                };
+
+                const getFeaturedBadge = (isFeatured) => {
+                    return isFeatured
+                        ? <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-medium">精选</span>
+                        : null;
+                };
+
+                const getModeText = (mode) => {
+                    return mode === 'sandbox' ? '沙盒' : '手串';
+                };
+
+                if (loading) {
+                    return <div className="card">正在加载灵感数据...</div>;
+                }
+
+                return (
+                    <div>
+                        <div className="card">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold">灵感管理</h2>
+                                <span className="text-sm text-gray-500">共 {designs.length} 条</span>
+                            </div>
+
+                            <div className="mb-6 space-y-4">
+                                <form onSubmit={handleSearch} className="flex gap-3">
+                                    <input
+                                        type="text"
+                                        value={searchKeyword}
+                                        onChange={e => setSearchKeyword(e.target.value)}
+                                        placeholder="搜索设计名称或编号..."
+                                        className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:border-green-500"
+                                    />
+                                    <button type="submit" className="btn btn-primary">搜索</button>
+                                    {searchKeyword && (
+                                        <button type="button" className="btn btn-secondary" onClick={() => { setSearchKeyword(''); loadDesigns(); }}>
+                                            清空
+                                        </button>
+                                    )}
+                                </form>
+                                <div className="flex flex-wrap gap-2">
+                                    <select
+                                        value={filterPublic}
+                                        onChange={e => { setFilterPublic(e.target.value); loadDesigns(); }}
+                                        className="px-3 py-2 border rounded-lg text-sm"
+                                    >
+                                        <option value="all">全部状态</option>
+                                        <option value="1">已发布</option>
+                                        <option value="0">未发布</option>
+                                    </select>
+                                    <select
+                                        value={filterFeatured}
+                                        onChange={e => { setFilterFeatured(e.target.value); loadDesigns(); }}
+                                        className="px-3 py-2 border rounded-lg text-sm"
+                                    >
+                                        <option value="all">全部精选</option>
+                                        <option value="1">精选</option>
+                                        <option value="0">非精选</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="table">
+                                    <thead>
+                                        <tr>
+                                            <th className="px-4 py-3 text-left">ID</th>
+                                            <th className="px-4 py-3 text-left">预览</th>
+                                            <th className="px-4 py-3 text-left">名称</th>
+                                            <th className="px-4 py-3 text-left">作者</th>
+                                            <th className="px-4 py-3 text-left">类型</th>
+                                            <th className="px-4 py-3 text-left">价格</th>
+                                            <th className="px-4 py-3 text-left">点赞</th>
+                                            <th className="px-4 py-3 text-left">状态</th>
+                                            <th className="px-4 py-3 text-left">创建时间</th>
+                                            <th className="px-4 py-3 text-left">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {designs.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="10" className="px-4 py-8 text-center text-gray-500">
+                                                    暂无灵感数据
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            designs.map(design => (
+                                                <tr key={design.id} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-3 font-mono text-sm">#{design.id}</td>
+                                                    <td className="px-4 py-3">
+                                                        {design.cover_image ? (
+                                                            <img
+                                                                src={design.cover_image}
+                                                                alt={design.name}
+                                                                className="w-12 h-12 object-cover rounded-lg border"
+                                                                onError={(e) => { e.target.style.display = 'none'; }}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-xs border">
+                                                                无图
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-medium max-w-[150px] truncate" title={design.name}>{design.name || '未命名'}</div>
+                                                        <div className="text-xs text-gray-400">{design.design_code}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm">{design.author_name || '匿名'}</td>
+                                                    <td className="px-4 py-3 text-sm">{getModeText(design.mode)}</td>
+                                                    <td className="px-4 py-3 text-sm font-medium text-green-600">¥{parseFloat(design.price || 0).toFixed(2)}</td>
+                                                    <td className="px-4 py-3 text-sm">{design.like_count || 0}</td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-col gap-1">
+                                                            {getPublicBadge(design.is_public)}
+                                                            {getFeaturedBadge(design.is_featured)}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-500">
+                                                        {design.created_at ? new Date(design.created_at).toLocaleDateString() : '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex flex-wrap gap-1">
+                                                            <button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(design)}>详情</button>
+                                                            <button className="btn btn-secondary btn-sm" onClick={() => handleEdit(design)}>编辑</button>
+                                                            <button className={`btn btn-sm ${design.is_public ? 'btn-danger' : 'btn-primary'}`} onClick={() => handleTogglePublic(design)}>
+                                                                {design.is_public ? '下架' : '发布'}
+                                                            </button>
+                                                            <button className={`btn btn-sm ${design.is_featured ? 'btn-danger' : 'btn-primary'}`} onClick={() => handleToggleFeatured(design)}>
+                                                                {design.is_featured ? '取消精选' : '设精选'}
+                                                            </button>
+                                                            <button className="btn btn-danger btn-sm" onClick={() => handleDelete(design)}>删除</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {showEditModal && editingDesign && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                                    <h3 className="text-xl font-bold mb-4">编辑灵感</h3>
+                                    <form onSubmit={handleEditSubmit}>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">设计名称</label>
+                                                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium mb-1">价格</label>
+                                                <input type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full px-3 py-2 border rounded-lg" required />
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" id="is_featured" checked={formData.is_featured} onChange={e => setFormData({...formData, is_featured: e.target.checked})} className="w-4 h-4" />
+                                                <label htmlFor="is_featured" className="text-sm font-medium">设为精选</label>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3 mt-6">
+                                            <button type="button" className="btn btn-secondary flex-1" onClick={() => { setShowEditModal(false); setEditingDesign(null); }}>取消</button>
+                                            <button type="submit" className="btn btn-primary flex-1">保存</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        )}
+
+                        {detailDesign && (
+                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                                <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-xl font-bold">灵感详情</h3>
+                                        <button onClick={() => setDetailDesign(null)} className="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+                                    </div>
+                                    <div className="space-y-3 text-sm">
+                                        {detailDesign.cover_image && (
+                                            <div className="flex justify-center">
+                                                <img src={detailDesign.cover_image} alt={detailDesign.name} className="max-w-full h-48 object-contain rounded-lg border" onError={(e) => { e.target.style.display = 'none'; }} />
+                                            </div>
+                                        )}
+                                        <div><strong>ID：</strong>#{detailDesign.id}</div>
+                                        <div><strong>编号：</strong>{detailDesign.design_code}</div>
+                                        <div><strong>名称：</strong>{detailDesign.name || '未命名'}</div>
+                                        <div><strong>作者：</strong>{detailDesign.author_name || '匿名'} (ID: {detailDesign.user_id})</div>
+                                        <div><strong>类型：</strong>{getModeText(detailDesign.mode)}</div>
+                                        <div><strong>价格：</strong>¥{parseFloat(detailDesign.price || 0).toFixed(2)}</div>
+                                        <div><strong>手围：</strong>{detailDesign.perimeter || 0}mm</div>
+                                        <div><strong>点赞数：</strong>{detailDesign.like_count || 0}</div>
+                                        <div><strong>浏览数：</strong>{detailDesign.view_count || 0}</div>
+                                        <div><strong>分享数：</strong>{detailDesign.share_count || 0}</div>
+                                        <div><strong>状态：</strong>{detailDesign.is_public ? '已发布' : '未发布'} {detailDesign.is_featured ? '· 精选' : ''}</div>
+                                        <div><strong>创建时间：</strong>{detailDesign.created_at || '-'}</div>
+                                        <div><strong>更新时间：</strong>{detailDesign.updated_at || '-'}</div>
+                                    </div>
+                                    <div className="flex gap-3 mt-6">
+                                        <button className="btn btn-secondary flex-1" onClick={() => setDetailDesign(null)}>关闭</button>
+                                        <button className="btn btn-primary flex-1" onClick={() => { setDetailDesign(null); handleEdit(detailDesign); }}>编辑</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
             // ========== 数据迁移面板 ==========
             function MigrationPanel() {
                 const [status, setStatus] = useState(null);
@@ -2261,6 +2704,8 @@
                 { id: 'orders', name: '订单管理', icon: '📦' },
                 { id: 'beads', name: '盘珠管理', icon: '🔮' },
                 { id: 'users', name: '用户管理', icon: '👥' },
+                { id: 'addresses', name: '地址管理', icon: '📍' },
+                { id: 'square', name: '灵感管理', icon: '💡' },
                 { id: 'migrate', name: '数据迁移', icon: '🚀' }
             ];
             
@@ -2272,6 +2717,10 @@
                         return <BeadManagement />;
                     case 'users':
                         return <UserManagement />;
+                    case 'addresses':
+                        return <AddressManagement />;
+                    case 'square':
+                        return <SquareManagement />;
                     case 'migrate':
                         return <MigrationPanel />;
                     default:

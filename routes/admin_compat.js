@@ -377,4 +377,151 @@ router.get('/get_qiniu_token.php', requireAdmin, (req, res) => {
   R.error(res, '七牛云上传已废弃。图片上传请使用 POST /upload/image 接口（FormData 格式，字段名 file）', 410);
 });
 
+// ========== 灵感（广场）管理 ==========
+
+// GET /backend/api/square/list.php - 获取所有设计（admin视角，包含未公开）
+router.get('/square/list.php', requireAdmin, (req, res) => {
+  try {
+    const { keyword, isPublic, isFeatured, page = 1, pageSize = 50 } = req.query;
+    let designs = db.getDesigns();
+
+    // 搜索
+    if (keyword) {
+      const kw = keyword.toLowerCase();
+      designs = designs.filter(d =>
+        (d.name && d.name.toLowerCase().includes(kw)) ||
+        (d.design_code && d.design_code.toLowerCase().includes(kw))
+      );
+    }
+
+    // 按公开状态筛选
+    if (isPublic !== undefined && isPublic !== '') {
+      const val = isPublic === '1' || isPublic === 'true';
+      designs = designs.filter(d => !!d.is_public === val);
+    }
+
+    // 按精选状态筛选
+    if (isFeatured !== undefined && isFeatured !== '') {
+      const val = isFeatured === '1' || isFeatured === 'true';
+      designs = designs.filter(d => !!d.is_featured === val);
+    }
+
+    // 排序：最新的在前
+    designs.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    const total = designs.length;
+    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const list = designs.slice(offset, offset + parseInt(pageSize));
+
+    // 关联作者信息
+    const users = db.getUsers();
+    list.forEach(d => {
+      if (typeof d.pattern === 'string') {
+        try { d.pattern = JSON.parse(d.pattern); } catch { d.pattern = []; }
+      }
+      const user = users.find(u => u.id == d.user_id);
+      d.author_name = user ? (user.nickname || user.username) : '匿名';
+      d.author_avatar = user ? (user.avatar || '') : '';
+    });
+
+    R.success(res, { list, total, page: parseInt(page), pageSize: parseInt(pageSize) }, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
+  }
+});
+
+// GET /backend/api/square/detail.php - 获取设计详情
+router.get('/square/detail.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.query;
+    if (!id) return R.error(res, 'ID不能为空');
+    const design = db.findDesignById(id);
+    if (!design) return R.error(res, '设计不存在');
+    if (typeof design.pattern === 'string') {
+      try { design.pattern = JSON.parse(design.pattern); } catch { design.pattern = []; }
+    }
+    const user = db.findUserById(design.user_id);
+    design.author_name = user ? (user.nickname || user.username) : '匿名';
+    design.author_avatar = user ? (user.avatar || '') : '';
+    R.success(res, design, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
+  }
+});
+
+// POST /backend/api/square/update.php - 更新设计信息
+router.post('/square/update.php', requireAdmin, (req, res) => {
+  try {
+    const { id, name, price, is_featured } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    const design = db.findDesignById(id);
+    if (!design) return R.error(res, '设计不存在');
+
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (price !== undefined) updateData.price = parseFloat(price) || 0;
+    if (is_featured !== undefined) updateData.is_featured = is_featured ? 1 : 0;
+    updateData.updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+    if (!db.updateDesign(id, updateData)) {
+      return R.error(res, '更新失败');
+    }
+    R.success(res, null, '更新成功');
+  } catch (e) {
+    R.serverError(res, '更新失败：' + e.message);
+  }
+});
+
+// POST /backend/api/square/toggle_public.php - 切换公开状态（审核/发布）
+router.post('/square/toggle_public.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    const design = db.findDesignById(id);
+    if (!design) return R.error(res, '设计不存在');
+
+    const newPublic = design.is_public ? 0 : 1;
+    db.updateDesign(id, {
+      is_public: newPublic,
+      updated_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    });
+    R.success(res, { is_public: newPublic }, newPublic ? '已发布到广场' : '已下架');
+  } catch (e) {
+    R.serverError(res, '操作失败：' + e.message);
+  }
+});
+
+// POST /backend/api/square/toggle_featured.php - 切换精选状态
+router.post('/square/toggle_featured.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    const design = db.findDesignById(id);
+    if (!design) return R.error(res, '设计不存在');
+
+    const newFeatured = design.is_featured ? 0 : 1;
+    db.updateDesign(id, {
+      is_featured: newFeatured,
+      updated_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    });
+    R.success(res, { is_featured: newFeatured }, newFeatured ? '已设为精选' : '已取消精选');
+  } catch (e) {
+    R.serverError(res, '操作失败：' + e.message);
+  }
+});
+
+// POST /backend/api/square/delete.php - 删除设计
+router.post('/square/delete.php', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) return R.error(res, 'ID不能为空');
+    if (!db.deleteDesign(id)) {
+      return R.error(res, '设计不存在');
+    }
+    R.success(res, null, '删除成功');
+  } catch (e) {
+    R.serverError(res, '删除失败：' + e.message);
+  }
+});
+
 module.exports = router;

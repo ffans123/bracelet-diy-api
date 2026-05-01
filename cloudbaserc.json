@@ -1,0 +1,8 @@
+{
+  "version": "2.0",
+  "envId": "prod-d6gl3tboe2697ec1e",
+  "$schema": "https://framework-1258016615.tcloudbaseapp.com/schema/latest.json",
+  "cloudrun": {
+    "name": "express-df5d"
+  }
+}

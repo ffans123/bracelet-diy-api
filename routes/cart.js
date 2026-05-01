@@ -90,16 +90,19 @@ router.post('/remove', auth.requireAuth, (req, res) => {
   try {
     const userId = req.user.id;
     const { design_id } = req.body;
+    console.log('[CART REMOVE] design_id=', design_id, 'type=', typeof design_id);
     if (!design_id) {
       return R.error(res, '缺少设计ID');
     }
 
     const cart = db.getCartByUserId(userId);
+    console.log('[CART REMOVE] cart items=', JSON.stringify(cart?.items));
     if (!cart) {
       return R.error(res, '购物车为空');
     }
 
-    const idx = cart.items.findIndex(item => item.design_id === design_id);
+    const idx = cart.items.findIndex(item => String(item.design_id) === String(design_id));
+    console.log('[CART REMOVE] idx=', idx);
     if (idx === -1) {
       return R.error(res, '商品不存在');
     }

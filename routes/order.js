@@ -89,7 +89,7 @@ router.post('/create', auth.requireAuth, (req, res) => {
     if (!address) return R.error(res, '收货地址不能为空');
     if (!/^1[3-9]\d{9}$/.test(phone)) return R.error(res, '手机号格式不正确');
 
-    const design = db.findDesignById(designId);
+    const design = db.findDesignById(designId) || db.findDesignByCode(designId);
     if (!design) return R.notFound(res, '设计不存在');
 
     let finalPrice = parseFloat(totalPrice);

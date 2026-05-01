@@ -12,35 +12,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.x'
+          node-version: '18'
 
-      - name: Install Tencent Cloud CLI
-        run: pip install tccli
+      - name: Install CloudBase CLI
+        run: npm install -g @cloudbase/cli
 
-      - name: Configure Tencent Cloud CLI
+      - name: Login and Deploy
         run: |
-          tccli configure set secretId ${{ secrets.TENCENT_SECRET_ID }} secretKey ${{ secrets.TENCENT_SECRET_KEY }} region ap-shanghai
-
-      - name: Verify credentials
-        run: tccli sts GetCallerIdentity
-
-      - name: List services in environment
-        run: tccli tcb DescribeCloudBaseRunServers --EnvId prod-d6gl3tboe2697ec1e
-
-      - name: Deploy to CloudBase Run
-        run: |
-          tccli tcb CreateCloudBaseRunServerVersion \
-            --EnvId prod-d6gl3tboe2697ec1e \
-            --ServerName express-df5d \
-            --ContainerPort 80 \
-            --Cpu 0.25 \
-            --Mem 0.5 \
-            --MinNum 1 \
-            --MaxNum 10 \
-            --PolicyType cpu \
-            --PolicyThreshold 60 \
-            --CustomLogs stdout \
-            --Remark "auto-deploy-$(date +%Y%m%d-%H%M%S)"
+          tcb login --apiKeyId "$API_KEY_ID" --apiKey "$API_KEY"
+          tcb cloudrun:deploy --envId prod-d6gl3tboe2697ec1e --serviceName express-df5d
+        env:
+          API_KEY_ID: ${{ secrets.TCB_API_KEY_ID }}
+          API_KEY: ${{ secrets.TCB_API_KEY }}

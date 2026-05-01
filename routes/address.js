@@ -23,9 +23,10 @@ router.get('/list', auth.requireAuth, (req, res) => {
 router.post('/add', auth.requireAuth, (req, res) => {
   try {
     const userId = req.user.id;
-    const { name, phone, province, city, district, address } = req.body;
+    const { name, phone, province, city, district, address, detail } = req.body;
+    const addressValue = address || detail;
 
-    if (!name || !phone || !province || !city || !district || !address) {
+    if (!name || !phone || !province || !city || !district || !addressValue) {
       return R.error(res, '请填写完整的收货地址信息');
     }
     if (!/^1[3-9]\d{9}$/.test(phone)) {
@@ -42,7 +43,7 @@ router.post('/add', auth.requireAuth, (req, res) => {
       province: province.trim(),
       city: city.trim(),
       district: district.trim(),
-      address: address.trim(),
+      address: addressValue.trim(),
       is_default: isDefault ? 1 : 0
     });
 
@@ -84,6 +85,22 @@ router.post('/delete', auth.requireAuth, (req, res) => {
     R.success(res, null, '删除成功');
   } catch (e) {
     R.serverError(res, '删除失败：' + e.message);
+  }
+});
+
+// GET /address/admin-list - 管理员获取所有地址（后台管理用）
+router.get('/admin-list', auth.requireAdmin, (req, res) => {
+  try {
+    const addresses = db.getAddresses();
+    // 关联用户信息
+    const users = db.getUsers ? db.getUsers() : [];
+    const result = addresses.map(a => {
+      const user = users.find(u => u.id == a.user_id);
+      return { ...a, username: user ? user.username : '-' };
+    });
+    R.success(res, result, '获取成功');
+  } catch (e) {
+    R.serverError(res, '获取失败：' + e.message);
   }
 });
 
