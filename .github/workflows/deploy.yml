@@ -22,8 +22,8 @@ jobs:
 
       - name: Login and Deploy
         run: |
-          tcb login --apiKeyId "$API_KEY_ID" --apiKey "$API_KEY"
-          tcb cloudrun:deploy --envId prod-d6gl3tboe2697ec1e --serviceName express-df5d
+          echo "n" | tcb login --apiKeyId "$API_KEY_ID" --apiKey "$API_KEY"
+          echo "n" | tcb cloudrun:deploy --envId prod-d6gl3tboe2697ec1e --service express-df5d
         env:
           API_KEY_ID: ${{ secrets.TCB_API_KEY_ID }}
           API_KEY: ${{ secrets.TCB_API_KEY }}
