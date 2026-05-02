@@ -224,7 +224,9 @@ router.post('/delete', auth.requireAuth, (req, res) => {
 // POST /order/pay - 在线支付（创建支付单）
 router.post('/pay', auth.requireAuth, (req, res) => {
   try {
-    const { order_id, pay_method = 'wxpay' } = req.body;
+    // 兼容前端参数：order_id/id, pay_method/type
+    const order_id = req.body.order_id || req.body.id;
+    const pay_method = req.body.pay_method || req.body.type || 'wxpay';
     const order = db.findOrderById(order_id);
     if (!order || order.user_id != req.user.id) {
       return R.error(res, '订单不存在');
