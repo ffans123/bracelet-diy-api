@@ -70,6 +70,36 @@ router.post('/notify_wxpay', (req, res) => {
   }
 });
 
+// GET /pay/mock - 模拟支付回调（演示用）
+router.get('/mock', (req, res) => {
+  try {
+    const { pay_no } = req.query;
+    const payments = db.getPayments();
+    const payment = payments.find(p => p.pay_no === pay_no);
+    if (!payment) {
+      return res.status(404).send('<html><body><h1>支付单不存在</h1></body></html>');
+    }
+    if (payment.status === 'success') {
+      return res.send('<html><body><h1>支付已完成</h1><p>请返回小程序查看订单状态</p></body></html>');
+    }
+    db.savePayments(payments.map(p => {
+      if (p.pay_no === pay_no) {
+        p.status = 'success';
+        p.paid_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      }
+      return p;
+    }));
+    db.updateOrder(payment.order_id, {
+      status: 'paid',
+      pay_method: payment.pay_method,
+      paid_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    });
+    res.send('<html><body><h1>支付成功</h1><p>请返回小程序查看订单状态</p></body></html>');
+  } catch (e) {
+    res.status(500).send('<html><body><h1>支付处理失败</h1></body></html>');
+  }
+});
+
 // GET /pay/query - 查询支付状态
 router.get('/query', auth.requireAuth, (req, res) => {
   try {

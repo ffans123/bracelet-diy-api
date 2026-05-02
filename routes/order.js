@@ -246,7 +246,12 @@ router.post('/pay', auth.requireAuth, (req, res) => {
       status: 'pending'
     });
 
-    R.success(res, { pay_no: payNo, amount: order.total_price }, '请前往支付');
+    // 构造模拟支付链接（演示用）
+    const host = req.get('host');
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const payurl = `${protocol}://${host}/pay/mock?pay_no=${payNo}`;
+
+    R.success(res, { pay_no: payNo, amount: order.total_price, payurl }, '请前往支付');
   } catch (e) {
     R.serverError(res, '支付失败：' + e.message);
   }
