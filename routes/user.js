@@ -9,9 +9,13 @@ const db = require('../utils/jsonDB');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
 
-// 微信小程序配置
-const WECHAT_APPID = process.env.WECHAT_APPID || 'wx06d5fcc693a93334';
-const WECHAT_SECRET = process.env.WECHAT_SECRET || '17221692cc45af67704af9f3d9dc09f0';
+// 微信小程序配置（请务必通过环境变量配置正确的 AppID 和 AppSecret）
+const WECHAT_APPID = process.env.WECHAT_APPID;
+const WECHAT_SECRET = process.env.WECHAT_SECRET;
+
+if (!WECHAT_APPID || !WECHAT_SECRET) {
+  console.warn('[WARN] WECHAT_APPID 或 WECHAT_SECRET 未配置，微信登录将不可用。请在云托管环境变量中配置。');
+}
 
 // POST /user/login - 用户名密码登录
 router.post('/login', (req, res) => {
@@ -104,6 +108,10 @@ router.post('/wx_login_demo', (req, res) => {
 // POST /user/wx_login - 微信小程序登录
 router.post('/wx_login', async (req, res) => {
   try {
+    if (!WECHAT_APPID || !WECHAT_SECRET) {
+      return R.error(res, '服务端未配置微信AppID/Secret，请联系管理员');
+    }
+
     const { code, nickname, avatar } = req.body;
     if (!code) {
       return R.error(res, 'code不能为空');
