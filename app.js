@@ -76,6 +76,22 @@ app.use((req, res) => {
   try {
     const { setup } = require('./utils/initDB');
     await setup();
+
+    // 检查是否需要自动迁移历史数据
+    try {
+      const { query } = require('./utils/db');
+      const [count] = await query('SELECT COUNT(*) as c FROM users');
+      if (count.c === 0) {
+        console.log('[Data] 检测到数据库为空，开始自动迁移历史数据...');
+        const { migrateAll } = require('./migrate-data');
+        await migrateAll();
+        console.log('[Data] 历史数据迁移完成');
+      } else {
+        console.log('[Data] 数据库已有数据，跳过自动迁移');
+      }
+    } catch (migrateErr) {
+      console.error('[Data] 自动迁移失败:', migrateErr.message);
+    }
   } catch (err) {
     console.error('[MySQL] 数据库初始化失败，服务将继续运行（部分功能可能不可用）:', err.message);
   }

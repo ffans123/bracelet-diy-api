@@ -222,23 +222,25 @@ async function migratePayments() {
   console.log(`[OK] payments: ${rows.length} 条`);
 }
 
-async function main() {
+async function migrateAll() {
   console.log('[MySQL] 开始数据迁移...');
-  try {
-    await migrateUsers();
-    await migrateDesigns();
-    await migrateOrders();
-    await migrateLikes();
-    await migrateBeads();
-    await migrateCarts();
-    await migrateAddresses();
-    await migratePayments();
-    console.log('[MySQL] 数据迁移完成！');
-    process.exit(0);
-  } catch (err) {
-    console.error('[MySQL] 迁移失败:', err.message);
-    process.exit(1);
-  }
+  await migrateUsers();
+  await migrateDesigns();
+  await migrateOrders();
+  await migrateLikes();
+  await migrateBeads();
+  await migrateCarts();
+  await migrateAddresses();
+  await migratePayments();
+  console.log('[MySQL] 数据迁移完成！');
 }
 
-main();
+// 直接运行脚本时执行
+if (require.main === module) {
+  migrateAll().then(() => process.exit(0)).catch(err => {
+    console.error('[MySQL] 迁移失败:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { migrateAll };
