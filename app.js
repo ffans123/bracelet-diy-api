@@ -14,6 +14,8 @@ const PORT = process.env.PORT || 80;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+// 微信支付回调需要原始 XML body（字符串形式，供 tenpay 中间件解析）
+app.use('/pay/notify', express.text({ type: 'application/xml' }));
 
 // 确保数据目录存在
 const DATA_DIR = path.join(__dirname, 'data');
@@ -68,6 +70,16 @@ app.get('/', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({ code: 404, message: '接口不存在', path: req.path });
 });
+
+// 数据库初始化
+(async () => {
+  try {
+    const { setup } = require('./utils/initDB');
+    await setup();
+  } catch (err) {
+    console.error('[MySQL] 数据库初始化失败，服务将继续运行（部分功能可能不可用）:', err.message);
+  }
+})();
 
 // 错误处理
 app.use((err, req, res, next) => {

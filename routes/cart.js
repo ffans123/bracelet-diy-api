@@ -6,18 +6,19 @@ const router = express.Router();
 const db = require('../utils/jsonDB');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
+const asyncHandler = require('../utils/asyncHandler');
 
 // GET /cart/list - 获取购物车
-router.get('/list', auth.requireAuth, (req, res) => {
+router.get('/list', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
-    const userCart = db.getCartByUserId(userId);
+    const userCart = await db.getCartByUserId(userId);
 
     if (!userCart || !userCart.items || userCart.items.length === 0) {
       return R.success(res, { items: [], total_items: 0, total_quantity: 0 }, '获取成功');
     }
 
-    const designs = db.getDesigns();
+    const designs = await db.getDesigns();
     const items = [];
     for (const item of userCart.items) {
       const design = designs.find(d => d.design_code === item.design_id || d.id == item.design_id);
@@ -51,10 +52,10 @@ router.get('/list', auth.requireAuth, (req, res) => {
   } catch (e) {
     R.serverError(res, '获取失败：' + e.message);
   }
-});
+}));
 
 // POST /cart/add - 添加商品到购物车
-router.post('/add', auth.requireAuth, (req, res) => {
+router.post('/add', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { design_id, quantity } = req.body;
@@ -62,7 +63,7 @@ router.post('/add', auth.requireAuth, (req, res) => {
       return R.error(res, '缺少必要参数');
     }
 
-    let cart = db.getCartByUserId(userId);
+    let cart = await db.getCartByUserId(userId);
     if (!cart) {
       cart = { user_id: userId, items: [] };
     }
@@ -78,15 +79,15 @@ router.post('/add', auth.requireAuth, (req, res) => {
       });
     }
 
-    db.updateCart(cart);
+    await db.updateCart(cart);
     R.success(res, { design_id, quantity }, '已加入购物车');
   } catch (e) {
     R.serverError(res, '添加失败：' + e.message);
   }
-});
+}));
 
 // POST /cart/remove - 移除商品
-router.post('/remove', auth.requireAuth, (req, res) => {
+router.post('/remove', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { design_id } = req.body;
@@ -95,7 +96,7 @@ router.post('/remove', auth.requireAuth, (req, res) => {
       return R.error(res, '缺少设计ID');
     }
 
-    const cart = db.getCartByUserId(userId);
+    const cart = await db.getCartByUserId(userId);
     console.log('[CART REMOVE] cart items=', JSON.stringify(cart?.items));
     if (!cart) {
       return R.error(res, '购物车为空');
@@ -109,15 +110,15 @@ router.post('/remove', auth.requireAuth, (req, res) => {
 
     cart.items.splice(idx, 1);
     cart.updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.updateCart(cart);
+    await db.updateCart(cart);
     R.success(res, { total_items: cart.items.length }, '商品已移除');
   } catch (e) {
     R.serverError(res, '移除失败：' + e.message);
   }
-});
+}));
 
 // POST /cart/update - 更新数量
-router.post('/update', auth.requireAuth, (req, res) => {
+router.post('/update', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const { design_id, quantity } = req.body;
@@ -128,7 +129,7 @@ router.post('/update', auth.requireAuth, (req, res) => {
       return R.error(res, '数量不能小于1');
     }
 
-    const cart = db.getCartByUserId(userId);
+    const cart = await db.getCartByUserId(userId);
     if (!cart) {
       return R.error(res, '购物车为空');
     }
@@ -140,27 +141,27 @@ router.post('/update', auth.requireAuth, (req, res) => {
 
     item.quantity = parseInt(quantity);
     item.updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    db.updateCart(cart);
+    await db.updateCart(cart);
     R.success(res, { quantity }, '数量已更新');
   } catch (e) {
     R.serverError(res, '更新失败：' + e.message);
   }
-});
+}));
 
 // POST /cart/clear - 清空购物车
-router.post('/clear', auth.requireAuth, (req, res) => {
+router.post('/clear', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
-    const cart = db.getCartByUserId(userId);
+    const cart = await db.getCartByUserId(userId);
     if (cart) {
       cart.items = [];
       cart.updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      db.updateCart(cart);
+      await db.updateCart(cart);
     }
     R.success(res, null, '购物车已清空');
   } catch (e) {
     R.serverError(res, '清空失败：' + e.message);
   }
-});
+}));
 
 module.exports = router;

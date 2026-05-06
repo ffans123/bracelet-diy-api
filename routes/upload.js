@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
+const asyncHandler = require('../utils/asyncHandler');
 const cosStorage = require('../utils/cosStorage');
 
 // 本地存储目录（COS 未配置时的回退）
@@ -49,7 +50,7 @@ const upload = multer({
 });
 
 // POST /upload/image - 上传图片
-router.post('/image', auth.requireAuth, upload.single('file'), async (req, res) => {
+router.post('/image', auth.requireAuth, upload.single('file'), asyncHandler(async (req, res) => {
   try {
     if (!req.file) {
       return R.error(res, '未找到上传文件');
@@ -72,6 +73,6 @@ router.post('/image', auth.requireAuth, upload.single('file'), async (req, res) 
   } catch (e) {
     R.serverError(res, '上传失败：' + e.message);
   }
-});
+}));
 
 module.exports = router;

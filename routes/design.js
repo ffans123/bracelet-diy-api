@@ -6,9 +6,10 @@ const router = express.Router();
 const db = require('../utils/jsonDB');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
+const asyncHandler = require('../utils/asyncHandler');
 
 // GET /design/list - 获取用户的设计列表
-router.get('/list', (req, res) => {
+router.get('/list', asyncHandler(async (req, res) => {
   try {
     const user = auth.getCurrentUser(req);
     if (!user) {
@@ -20,7 +21,7 @@ router.get('/list', (req, res) => {
     const mode = req.query.mode || '';
     const isPublic = req.query.isPublic;
 
-    let designs = db.getDesigns().filter(d => d.user_id == user.id);
+    let designs = (await db.getDesigns()).filter(d => d.user_id == user.id);
 
     if (mode) {
       designs = designs.filter(d => d.mode === mode);
@@ -45,13 +46,13 @@ router.get('/list', (req, res) => {
   } catch (e) {
     R.serverError(res, '获取失败：' + e.message);
   }
-});
+}));
 
 // GET /design/detail - 设计详情
-router.get('/detail', (req, res) => {
+router.get('/detail', asyncHandler(async (req, res) => {
   try {
     const { id } = req.query;
-    const design = db.findDesignById(id);
+    const design = await db.findDesignById(id);
     if (!design) {
       return R.notFound(res, '设计不存在');
     }
@@ -62,10 +63,10 @@ router.get('/detail', (req, res) => {
   } catch (e) {
     R.serverError(res, '获取失败：' + e.message);
   }
-});
+}));
 
 // POST /design/save - 保存设计
-router.post('/save', auth.requireAuth, (req, res) => {
+router.post('/save', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     console.log('[DESIGN SAVE] auth header:', req.headers.authorization);
     console.log('[DESIGN SAVE] req.user:', req.user);
@@ -82,7 +83,7 @@ router.post('/save', auth.requireAuth, (req, res) => {
     const designName = name || (mode === 'sandbox' ? '沙盒自由画作' : '我的设计');
     const designCode = 'd_' + Date.now() + '_' + Math.floor(1000 + Math.random() * 9000);
 
-    const designId = db.addDesign({
+    const designId = await db.addDesign({
       user_id: userId,
       design_code: designCode,
       name: designName,
@@ -101,7 +102,7 @@ router.post('/save', auth.requireAuth, (req, res) => {
 
     if (!designId) return R.serverError(res, '保存失败');
 
-    const design = db.findDesignById(designId);
+    const design = await db.findDesignById(designId);
     if (typeof design.pattern === 'string') {
       try { design.pattern = JSON.parse(design.pattern); } catch { design.pattern = []; }
     }
@@ -109,15 +110,15 @@ router.post('/save', auth.requireAuth, (req, res) => {
   } catch (e) {
     R.serverError(res, '保存失败：' + e.message);
   }
-});
+}));
 
 // POST /design/update - 更新设计
-router.post('/update', auth.requireAuth, (req, res) => {
+router.post('/update', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const { id, ...data } = req.body;
     if (!id) return R.error(res, 'ID不能为空');
 
-    const design = db.findDesignById(id);
+    const design = await db.findDesignById(id);
     if (!design || design.user_id != req.user.id) {
       return R.error(res, '设计不存在');
     }
@@ -126,44 +127,44 @@ router.post('/update', auth.requireAuth, (req, res) => {
       data.pattern = JSON.stringify(data.pattern);
     }
 
-    db.updateDesign(id, data);
+    await db.updateDesign(id, data);
     R.success(res, null, '更新成功');
   } catch (e) {
     R.serverError(res, '更新失败：' + e.message);
   }
-});
+}));
 
 // POST /design/delete - 删除设计
-router.post('/delete', auth.requireAuth, (req, res) => {
+router.post('/delete', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const { id } = req.body;
     if (!id) return R.error(res, 'ID不能为空');
-    const design = db.findDesignById(id);
+    const design = await db.findDesignById(id);
     if (!design || design.user_id != req.user.id) {
       return R.error(res, '设计不存在');
     }
-    db.deleteDesign(id);
+    await db.deleteDesign(id);
     R.success(res, null, '删除成功');
   } catch (e) {
     R.serverError(res, '删除失败：' + e.message);
   }
-});
+}));
 
 // POST /design/toggle_public - 切换公开状态
-router.post('/toggle_public', auth.requireAuth, (req, res) => {
+router.post('/toggle_public', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
     const { id } = req.body;
     if (!id) return R.error(res, 'ID不能为空');
-    const design = db.findDesignById(id);
+    const design = await db.findDesignById(id);
     if (!design || design.user_id != req.user.id) {
       return R.error(res, '设计不存在');
     }
     const newPublic = design.is_public ? 0 : 1;
-    db.updateDesign(id, { is_public: newPublic });
+    await db.updateDesign(id, { is_public: newPublic });
     R.success(res, { is_public: newPublic }, '状态已切换');
   } catch (e) {
     R.serverError(res, '操作失败：' + e.message);
   }
-});
+}));
 
 module.exports = router;

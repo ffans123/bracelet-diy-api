@@ -8,6 +8,7 @@ const axios = require('axios');
 const db = require('../utils/jsonDB');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
+const asyncHandler = require('../utils/asyncHandler');
 
 // 微信小程序配置（请务必通过环境变量配置正确的 AppID 和 AppSecret）
 const WECHAT_APPID = process.env.WECHAT_APPID;
@@ -18,14 +19,14 @@ if (!WECHAT_APPID || !WECHAT_SECRET) {
 }
 
 // POST /user/login - 用户名密码登录
-router.post('/login', (req, res) => {
+router.post('/login', asyncHandler(async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
       return R.error(res, '用户名和密码不能为空');
     }
 
-    const user = db.findUserByUsername(username.trim());
+    const user = await db.findUserByUsername(username.trim());
     if (!user) {
       return R.error(res, '用户名或密码错误');
     }
@@ -42,10 +43,10 @@ router.post('/login', (req, res) => {
   } catch (e) {
     R.serverError(res, '登录失败：' + e.message);
   }
-});
+}));
 
 // POST /user/register - 注册
-router.post('/register', (req, res) => {
+router.post('/register', asyncHandler(async (req, res) => {
   try {
     const { username, password, nickname } = req.body;
     if (!username || !password) {
@@ -58,12 +59,12 @@ router.post('/register', (req, res) => {
       return R.error(res, '密码长度不能少于6个字符');
     }
 
-    if (db.findUserByUsername(username.trim())) {
+    if (await db.findUserByUsername(username.trim())) {
       return R.error(res, '用户名已被使用');
     }
 
     const passwordHash = bcrypt.hashSync(password, 10);
-    const userId = db.addUser({
+    const userId = await db.addUser({
       username: username.trim(),
       password: passwordHash,
       nickname: nickname || username,
@@ -74,28 +75,28 @@ router.post('/register', (req, res) => {
       return R.serverError(res, '注册失败');
     }
 
-    const user = db.findUserById(userId);
+    const user = await db.findUserById(userId);
     delete user.password;
     const token = auth.generateToken(userId);
     R.success(res, { token, user }, '注册成功');
   } catch (e) {
     R.serverError(res, '注册失败：' + e.message);
   }
-});
+}));
 
 // POST /user/wx_login_demo - 演示登录（开发环境）
-router.post('/wx_login_demo', (req, res) => {
+router.post('/wx_login_demo', asyncHandler(async (req, res) => {
   try {
-    let user = db.findUserByUsername('demo_user');
+    let user = await db.findUserByUsername('demo_user');
     if (!user) {
-      const userId = db.addUser({
+      const userId = await db.addUser({
         username: 'demo_user',
         password: bcrypt.hashSync('demo123', 10),
         nickname: '演示用户',
         avatar: '',
         role: 'user'
       });
-      user = db.findUserById(userId);
+      user = await db.findUserById(userId);
     }
     delete user.password;
     const token = auth.generateToken(user.id);
@@ -103,10 +104,10 @@ router.post('/wx_login_demo', (req, res) => {
   } catch (e) {
     R.serverError(res, '演示登录失败：' + e.message);
   }
-});
+}));
 
 // POST /user/wx_login - 微信小程序登录
-router.post('/wx_login', async (req, res) => {
+router.post('/wx_login', asyncHandler(async (req, res) => {
   try {
     if (!WECHAT_APPID || !WECHAT_SECRET) {
       return R.error(res, '服务端未配置微信AppID/Secret，请联系管理员');
@@ -132,9 +133,9 @@ router.post('/wx_login', async (req, res) => {
     const openid = result.openid;
 
     // 查找或创建用户
-    let user = db.findUserByOpenid(openid);
+    let user = await db.findUserByOpenid(openid);
     if (!user) {
-      const userId = db.addUser({
+      const userId = await db.addUser({
         openid: openid,
         username: 'user_' + openid.slice(-8),
         password: bcrypt.hashSync(Date.now().toString(), 10),
@@ -142,15 +143,15 @@ router.post('/wx_login', async (req, res) => {
         avatar: avatar || '',
         role: 'user'
       });
-      user = db.findUserById(userId);
+      user = await db.findUserById(userId);
     } else if (nickname || avatar) {
       // 更新已有用户的昵称/头像
       const updateData = {};
       if (nickname && !user.nickname) updateData.nickname = nickname;
       if (avatar && !user.avatar) updateData.avatar = avatar;
       if (Object.keys(updateData).length > 0) {
-        db.updateUser(user.id, updateData);
-        user = db.findUserById(user.id);
+        await db.updateUser(user.id, updateData);
+        user = await db.findUserById(user.id);
       }
     }
 
@@ -161,16 +162,16 @@ router.post('/wx_login', async (req, res) => {
     console.error('wx_login error:', e);
     R.serverError(res, '登录失败：' + e.message);
   }
-});
+}));
 
 // GET /user/info - 获取当前用户信息
-router.get('/info', (req, res) => {
+router.get('/info', asyncHandler(async (req, res) => {
   try {
     const userId = auth.getCurrentUser(req)?.id;
     if (!userId) {
       return R.success(res, null, '未登录');
     }
-    const user = db.findUserById(userId);
+    const user = await db.findUserById(userId);
     if (!user) {
       return R.success(res, null, '未登录');
     }
@@ -179,16 +180,16 @@ router.get('/info', (req, res) => {
   } catch (e) {
     R.serverError(res, '获取失败：' + e.message);
   }
-});
+}));
 
 // GET /user/profile - 用户详情
-router.get('/profile', (req, res) => {
+router.get('/profile', asyncHandler(async (req, res) => {
   try {
     const user = auth.getCurrentUser(req);
     if (!user) {
       return R.unauthorized(res, '请先登录');
     }
-    const u = db.findUserById(user.id);
+    const u = await db.findUserById(user.id);
     if (!u) {
       return R.unauthorized(res, '用户不存在');
     }
@@ -197,10 +198,10 @@ router.get('/profile', (req, res) => {
   } catch (e) {
     R.serverError(res, '获取失败：' + e.message);
   }
-});
+}));
 
 // POST /user/update - 更新用户信息
-router.post('/update', (req, res) => {
+router.post('/update', asyncHandler(async (req, res) => {
   try {
     const user = auth.getCurrentUser(req);
     if (!user) {
@@ -212,17 +213,17 @@ router.post('/update', (req, res) => {
     if (avatar !== undefined) data.avatar = avatar;
     if (phone !== undefined) data.phone = phone;
 
-    db.updateUser(user.id, data);
-    const u = db.findUserById(user.id);
+    await db.updateUser(user.id, data);
+    const u = await db.findUserById(user.id);
     delete u.password;
     R.success(res, u, '更新成功');
   } catch (e) {
     R.serverError(res, '更新失败：' + e.message);
   }
-});
+}));
 
 // POST /user/recharge - 余额充值
-router.post('/recharge', (req, res) => {
+router.post('/recharge', asyncHandler(async (req, res) => {
   try {
     const user = auth.getCurrentUser(req);
     if (!user) {
@@ -233,37 +234,37 @@ router.post('/recharge', (req, res) => {
     if (isNaN(amt) || amt <= 0) {
       return R.error(res, '充值金额无效');
     }
-    const u = db.findUserById(user.id);
+    const u = await db.findUserById(user.id);
     const newBalance = parseFloat(u.balance || 0) + amt;
-    db.updateUser(user.id, { balance: newBalance });
+    await db.updateUser(user.id, { balance: newBalance });
     R.success(res, { balance: newBalance }, '充值成功');
   } catch (e) {
     R.serverError(res, '充值失败：' + e.message);
   }
-});
+}));
 
 // POST /user/change_password - 修改密码
-router.post('/change_password', (req, res) => {
+router.post('/change_password', asyncHandler(async (req, res) => {
   try {
     const user = auth.getCurrentUser(req);
     if (!user) {
       return R.unauthorized(res);
     }
     const { old_password, new_password } = req.body;
-    const u = db.findUserById(user.id);
+    const u = await db.findUserById(user.id);
     const hash = u.password.replace(/^\$2y\$/, '$2a$');
     if (!bcrypt.compareSync(old_password, hash)) {
       return R.error(res, '原密码错误');
     }
-    db.updateUser(user.id, { password: bcrypt.hashSync(new_password, 10) });
+    await db.updateUser(user.id, { password: bcrypt.hashSync(new_password, 10) });
     R.success(res, null, '密码修改成功');
   } catch (e) {
     R.serverError(res, '修改失败：' + e.message);
   }
-});
+}));
 
 // POST /user/verify_token - 验证token
-router.post('/verify_token', (req, res) => {
+router.post('/verify_token', asyncHandler(async (req, res) => {
   try {
     // 优先从 header 获取，兼容 body 传参
     const authHeader = req.headers.authorization || req.headers.Authorization;
@@ -279,7 +280,7 @@ router.post('/verify_token', (req, res) => {
     if (!payload) {
       return R.error(res, 'token无效或已过期');
     }
-    const user = db.findUserById(payload.user_id);
+    const user = await db.findUserById(payload.user_id);
     if (!user) {
       return R.error(res, '用户不存在');
     }
@@ -288,6 +289,6 @@ router.post('/verify_token', (req, res) => {
   } catch (e) {
     R.serverError(res, '验证失败：' + e.message);
   }
-});
+}));
 
 module.exports = router;

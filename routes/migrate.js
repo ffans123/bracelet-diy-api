@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../utils/auth');
 const R = require('../utils/response');
+const asyncHandler = require('../utils/asyncHandler');
 const db = require('../utils/jsonDB');
 const cosStorage = require('../utils/cosStorage');
 
@@ -19,7 +20,7 @@ async function runMigration(progressCallback) {
     throw new Error('COS 未配置，无法迁移');
   }
 
-  const beads = db.getBeads();
+  const beads = await db.getBeads();
   const beadsWithImage = beads.filter(b => b.image && b.image.startsWith('http'));
 
   // 背景图列表
@@ -54,7 +55,7 @@ async function runMigration(progressCallback) {
       const buffer = await cosStorage.downloadImageToBuffer(bead.image);
       const cosUrl = await cosStorage.uploadBuffer(buffer, key);
       beads[idx].image = cosUrl;
-      db.saveBeads(beads);
+      await db.updateBead(bead.id, { image: cosUrl });
       success++;
     } catch (err) {
       failed++;
@@ -103,9 +104,9 @@ async function runMigration(progressCallback) {
 }
 
 // GET /migrate/start - 启动迁移（管理员权限）
-router.get('/start', auth.requireAuth, async (req, res) => {
+router.get('/start', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
-    const user = db.findUserById(req.user.id);
+    const user = await db.findUserById(req.user.id);
     if (!user || user.role !== 'admin') {
       return R.forbidden(res, '需要管理员权限');
     }
@@ -140,17 +141,17 @@ router.get('/start', auth.requireAuth, async (req, res) => {
   } catch (e) {
     R.serverError(res, '启动迁移失败: ' + e.message);
   }
-});
+}));
 
 // GET /migrate/status - 查看迁移状态（简单版：检查 beads.json 中 COS URL 数量）
-router.get('/status', auth.requireAuth, (req, res) => {
+router.get('/status', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
-    const user = db.findUserById(req.user.id);
+    const user = await db.findUserById(req.user.id);
     if (!user || user.role !== 'admin') {
       return R.forbidden(res, '需要管理员权限');
     }
 
-    const beads = db.getBeads();
+    const beads = await db.getBeads();
     const total = beads.length;
     const withImage = beads.filter(b => b.image && b.image.startsWith('http')).length;
     const cosUrls = beads.filter(b => {
@@ -173,6 +174,6 @@ router.get('/status', auth.requireAuth, (req, res) => {
   } catch (e) {
     R.serverError(res, '获取失败: ' + e.message);
   }
-});
+}));
 
 module.exports = router;

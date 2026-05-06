@@ -1,17 +1,14 @@
 /**
- * JSON 数据库操作类（替代 PHP JsonDB）
+ * MySQL 数据库操作类（替代 JSON 文件存储）
+ * 保持与原有 jsonDB.js 完全相同的导出接口
  */
+const { query, transaction } = require('./db');
 const fs = require('fs');
 const path = require('path');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 
-// 确保目录存在
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-// 文件路径常量
+// 保留文件常量兼容（不再实际读写）
 const FILES = {
   USERS: path.join(DATA_DIR, 'users.json'),
   DESIGNS: path.join(DATA_DIR, 'designs.json'),
@@ -22,13 +19,6 @@ const FILES = {
   PAYMENTS: path.join(DATA_DIR, 'payments.json'),
   ADDRESSES: path.join(DATA_DIR, 'addresses.json'),
 };
-
-// 初始化所有数据文件
-Object.values(FILES).forEach(file => {
-  if (!fs.existsSync(file)) {
-    fs.writeFileSync(file, '[]', 'utf-8');
-  }
-});
 
 function read(file) {
   try {
@@ -48,267 +38,365 @@ function write(file, data) {
   }
 }
 
-// ========== 用户相关 ==========
-function getUsers() { return read(FILES.USERS); }
-function saveUsers(users) { return write(FILES.USERS, users); }
-
-function findUserByUsername(username) {
-  const users = getUsers();
-  return users.find(u => u.username === username) || null;
-}
-
-function findUserById(id) {
-  const users = getUsers();
-  const user = users.find(u => u.id == id);
-  if (user) {
-    if (!user.balance) user.balance = 0;
-    if (!user.role) user.role = 'user';
-  }
-  return user || null;
-}
-
-function findUserByOpenid(openid) {
-  const users = getUsers();
-  return users.find(u => u.openid === openid) || null;
-}
-
-function addUser(user) {
-  const users = getUsers();
-  user.id = users.length > 0 ? Math.max(...users.map(u => u.id || 0)) + 1 : 1;
-  user.balance = 0;
-  user.role = user.role || 'user';
-  user.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  users.push(user);
-  return saveUsers(users) ? user.id : false;
-}
-
-function updateUser(id, data) {
-  const users = getUsers();
-  const idx = users.findIndex(u => u.id == id);
-  if (idx === -1) return false;
-  Object.keys(data).forEach(key => {
-    if (key !== 'id' && key !== 'created_at') {
-      users[idx][key] = data[key];
+// JSON 字段解析辅助函数
+function parseJsonField(row, fields) {
+  if (!row) return row;
+  fields.forEach(f => {
+    if (row[f] && typeof row[f] === 'string') {
+      try { row[f] = JSON.parse(row[f]); } catch {}
     }
   });
-  users[idx].updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  return saveUsers(users);
+  return row;
+}
+
+function stringifyJsonField(data, fields) {
+  const result = { ...data };
+  fields.forEach(f => {
+    if (result[f] !== undefined && typeof result[f] !== 'string') {
+      result[f] = JSON.stringify(result[f]);
+    }
+  });
+  return result;
+}
+
+// ========== 用户相关 ==========
+const USER_JSON_FIELDS = [];
+
+async function getUsers() {
+  return await query('SELECT * FROM users ORDER BY id DESC');
+}
+
+async function saveUsers(users) {
+  // MySQL 模式下不再需要批量保存
+  return true;
+}
+
+async function findUserByUsername(username) {
+  const rows = await query('SELECT * FROM users WHERE username = ? LIMIT 1', [username]);
+  const user = rows[0] || null;
+  if (user) {
+    if (user.balance === null) user.balance = 0;
+    if (!user.role) user.role = 'user';
+  }
+  return user;
+}
+
+async function findUserById(id) {
+  const rows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
+  const user = rows[0] || null;
+  if (user) {
+    if (user.balance === null) user.balance = 0;
+    if (!user.role) user.role = 'user';
+  }
+  return user;
+}
+
+async function findUserByOpenid(openid) {
+  const rows = await query('SELECT * FROM users WHERE openid = ? LIMIT 1', [openid]);
+  return rows[0] || null;
+}
+
+async function addUser(user) {
+  const data = stringifyJsonField(user, USER_JSON_FIELDS);
+  const fields = Object.keys(data).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+  const placeholders = fields.map(() => '?').join(',');
+  const values = fields.map(f => data[f]);
+  const sql = `INSERT INTO users (${fields.join(',')}) VALUES (${placeholders})`;
+  const result = await query(sql, values);
+  return result.insertId;
+}
+
+async function updateUser(id, data) {
+  const clean = { ...data };
+  delete clean.id;
+  delete clean.created_at;
+  delete clean.updated_at;
+  const fields = Object.keys(clean);
+  if (fields.length === 0) return true;
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => clean[f]);
+  values.push(id);
+  await query(`UPDATE users SET ${setClause} WHERE id = ?`, values);
+  return true;
+}
+
+async function deleteUser(id) {
+  await query('DELETE FROM users WHERE id = ?', [id]);
+  return true;
 }
 
 // ========== 设计相关 ==========
-function getDesigns() { return read(FILES.DESIGNS); }
-function saveDesigns(designs) { return write(FILES.DESIGNS, designs); }
+const DESIGN_JSON_FIELDS = ['pattern', 'bead_details'];
 
-function findDesignByCode(code) {
-  return getDesigns().find(d => d.design_code === code) || null;
+async function getDesigns() {
+  const rows = await query('SELECT * FROM designs ORDER BY id DESC');
+  return rows.map(r => parseJsonField(r, DESIGN_JSON_FIELDS));
 }
 
-function findDesignById(id) {
-  return getDesigns().find(d => d.id == id) || null;
+async function saveDesigns(designs) {
+  return true;
 }
 
-function addDesign(design) {
-  const designs = getDesigns();
-  design.id = designs.length > 0 ? Math.max(...designs.map(d => d.id || 0)) + 1 : 1;
-  design.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  designs.push(design);
-  return saveDesigns(designs) ? design.id : false;
+async function findDesignByCode(code) {
+  const rows = await query('SELECT * FROM designs WHERE design_code = ? LIMIT 1', [code]);
+  return parseJsonField(rows[0] || null, DESIGN_JSON_FIELDS);
 }
 
-function updateDesign(id, data) {
-  const designs = getDesigns();
-  const idx = designs.findIndex(d => d.id == id);
-  if (idx === -1) return false;
-  Object.keys(data).forEach(key => {
-    if (key !== 'id' && key !== 'created_at') {
-      designs[idx][key] = data[key];
-    }
-  });
-  designs[idx].updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  return saveDesigns(designs);
+async function findDesignById(id) {
+  const rows = await query('SELECT * FROM designs WHERE id = ? LIMIT 1', [id]);
+  return parseJsonField(rows[0] || null, DESIGN_JSON_FIELDS);
 }
 
-function deleteDesign(id) {
-  const designs = getDesigns();
-  const filtered = designs.filter(d => d.id != id);
-  if (filtered.length === designs.length) return false;
-  return saveDesigns(filtered);
+async function addDesign(design) {
+  const data = stringifyJsonField(design, DESIGN_JSON_FIELDS);
+  const fields = Object.keys(data).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+  const placeholders = fields.map(() => '?').join(',');
+  const values = fields.map(f => data[f]);
+  const sql = `INSERT INTO designs (${fields.join(',')}) VALUES (${placeholders})`;
+  const result = await query(sql, values);
+  return result.insertId;
+}
+
+async function updateDesign(id, data) {
+  const clean = stringifyJsonField(data, DESIGN_JSON_FIELDS);
+  delete clean.id;
+  delete clean.created_at;
+  delete clean.updated_at;
+  const fields = Object.keys(clean);
+  if (fields.length === 0) return true;
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => clean[f]);
+  values.push(id);
+  await query(`UPDATE designs SET ${setClause} WHERE id = ?`, values);
+  return true;
+}
+
+async function deleteDesign(id) {
+  await query('DELETE FROM designs WHERE id = ?', [id]);
+  return true;
 }
 
 // ========== 订单相关 ==========
-function getOrders() { return read(FILES.ORDERS); }
-function saveOrders(orders) { return write(FILES.ORDERS, orders); }
+const ORDER_JSON_FIELDS = ['pattern', 'bead_details'];
 
-function addOrder(order) {
-  const orders = getOrders();
-  const maxId = orders.length > 0 ? Math.max(...orders.map(o => o.id || 0)) : 0;
-  order.id = maxId + 1;
-  order.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  orders.push(order);
-  return saveOrders(orders) ? order.id : false;
+async function getOrders() {
+  const rows = await query('SELECT * FROM orders ORDER BY id DESC');
+  return rows.map(r => parseJsonField(r, ORDER_JSON_FIELDS));
 }
 
-function updateOrder(id, data) {
-  const orders = getOrders();
-  const idx = orders.findIndex(o => o.id == id);
-  if (idx === -1) return false;
-  Object.keys(data).forEach(key => {
-    if (key !== 'id' && key !== 'created_at') {
-      orders[idx][key] = data[key];
-    }
-  });
-  orders[idx].updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  return saveOrders(orders);
+async function saveOrders(orders) {
+  return true;
 }
 
-function findOrderById(id) {
-  return getOrders().find(o => o.id == id) || null;
+async function addOrder(order) {
+  const data = stringifyJsonField(order, ORDER_JSON_FIELDS);
+  const fields = Object.keys(data).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+  const placeholders = fields.map(() => '?').join(',');
+  const values = fields.map(f => data[f]);
+  const sql = `INSERT INTO orders (${fields.join(',')}) VALUES (${placeholders})`;
+  const result = await query(sql, values);
+  return result.insertId;
+}
+
+async function updateOrder(id, data) {
+  const clean = stringifyJsonField(data, ORDER_JSON_FIELDS);
+  delete clean.id;
+  delete clean.created_at;
+  delete clean.updated_at;
+  const fields = Object.keys(clean);
+  if (fields.length === 0) return true;
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => clean[f]);
+  values.push(id);
+  await query(`UPDATE orders SET ${setClause} WHERE id = ?`, values);
+  return true;
+}
+
+async function deleteOrder(id) {
+  await query('DELETE FROM orders WHERE id = ?', [id]);
+  return true;
+}
+
+async function findOrderById(id) {
+  const rows = await query('SELECT * FROM orders WHERE id = ? LIMIT 1', [id]);
+  return parseJsonField(rows[0] || null, ORDER_JSON_FIELDS);
 }
 
 // ========== 点赞相关 ==========
-function getLikes() { return read(FILES.LIKES); }
-function saveLikes(likes) { return write(FILES.LIKES, likes); }
-
-function isLiked(userId, designId) {
-  return getLikes().find(l => l.user_id == userId && l.design_id == designId) || null;
+async function getLikes() {
+  return await query('SELECT * FROM likes ORDER BY id DESC');
 }
 
-function toggleLike(userId, designId) {
-  const likes = getLikes();
-  const idx = likes.findIndex(l => l.user_id == userId && l.design_id == designId);
-  if (idx !== -1) {
-    // 取消点赞
-    likes.splice(idx, 1);
-    saveLikes(likes);
-    const design = findDesignById(designId);
-    if (design) {
-      updateDesign(designId, { like_count: Math.max(0, (design.like_count || 0) - 1) });
+async function saveLikes(likes) {
+  return true;
+}
+
+async function isLiked(userId, designId) {
+  const rows = await query('SELECT * FROM likes WHERE user_id = ? AND design_id = ? LIMIT 1', [userId, designId]);
+  return rows[0] || null;
+}
+
+async function toggleLike(userId, designId) {
+  return await transaction(async (conn) => {
+    const [existing] = await conn.execute(
+      'SELECT * FROM likes WHERE user_id = ? AND design_id = ? LIMIT 1',
+      [userId, designId]
+    );
+    if (existing.length > 0) {
+      // 取消点赞
+      await conn.execute('DELETE FROM likes WHERE user_id = ? AND design_id = ?', [userId, designId]);
+      const [designs] = await conn.execute('SELECT like_count FROM designs WHERE id = ? LIMIT 1', [designId]);
+      if (designs.length > 0) {
+        const newCount = Math.max(0, (designs[0].like_count || 0) - 1);
+        await conn.execute('UPDATE designs SET like_count = ? WHERE id = ?', [newCount, designId]);
+      }
+      return false;
+    } else {
+      // 添加点赞
+      await conn.execute(
+        'INSERT INTO likes (user_id, design_id) VALUES (?, ?)',
+        [userId, designId]
+      );
+      const [designs] = await conn.execute('SELECT like_count FROM designs WHERE id = ? LIMIT 1', [designId]);
+      if (designs.length > 0) {
+        const newCount = (designs[0].like_count || 0) + 1;
+        await conn.execute('UPDATE designs SET like_count = ? WHERE id = ?', [newCount, designId]);
+      }
+      return true;
     }
-    return false;
-  } else {
-    // 添加点赞
-    likes.push({
-      id: likes.length > 0 ? Math.max(...likes.map(l => l.id || 0)) + 1 : 1,
-      user_id: userId,
-      design_id: designId,
-      created_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
-    });
-    saveLikes(likes);
-    const design = findDesignById(designId);
-    if (design) {
-      updateDesign(designId, { like_count: (design.like_count || 0) + 1 });
-    }
-    return true;
-  }
+  });
 }
 
 // ========== 珠子相关 ==========
-function getBeads() { return read(FILES.BEADS); }
-function saveBeads(beads) { return write(FILES.BEADS, beads); }
-
-function findBeadById(id) {
-  return getBeads().find(b => b.id == id) || null;
+async function getBeads() {
+  return await query('SELECT * FROM beads ORDER BY id ASC');
 }
 
-function addBead(bead) {
-  const beads = getBeads();
-  const maxId = beads.length > 0 ? Math.max(...beads.map(b => b.id || 0)) : 0;
-  bead.id = maxId + 1;
-  bead.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  bead.updated_at = bead.created_at;
-  beads.push(bead);
-  return saveBeads(beads) ? bead.id : false;
+async function saveBeads(beads) {
+  return true;
 }
 
-function updateBead(id, data) {
-  const beads = getBeads();
-  const idx = beads.findIndex(b => b.id == id);
-  if (idx === -1) return false;
-  Object.keys(data).forEach(key => {
-    if (key !== 'id' && key !== 'created_at') {
-      beads[idx][key] = data[key];
-    }
-  });
-  beads[idx].updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  return saveBeads(beads);
+async function findBeadById(id) {
+  const rows = await query('SELECT * FROM beads WHERE id = ? LIMIT 1', [id]);
+  return rows[0] || null;
 }
 
-function deleteBead(id) {
-  const beads = getBeads();
-  const filtered = beads.filter(b => b.id != id);
-  if (filtered.length === beads.length) return false;
-  return saveBeads(filtered);
+async function addBead(bead) {
+  const fields = Object.keys(bead).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+  const placeholders = fields.map(() => '?').join(',');
+  const values = fields.map(f => bead[f]);
+  const sql = `INSERT INTO beads (${fields.join(',')}) VALUES (${placeholders})`;
+  const result = await query(sql, values);
+  return result.insertId;
+}
+
+async function updateBead(id, data) {
+  const clean = { ...data };
+  delete clean.id;
+  delete clean.created_at;
+  delete clean.updated_at;
+  const fields = Object.keys(clean);
+  if (fields.length === 0) return true;
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => clean[f]);
+  values.push(id);
+  await query(`UPDATE beads SET ${setClause} WHERE id = ?`, values);
+  return true;
+}
+
+async function deleteBead(id) {
+  await query('DELETE FROM beads WHERE id = ?', [id]);
+  return true;
 }
 
 // ========== 购物车相关 ==========
-function getCarts() { return read(FILES.CARTS); }
-function saveCarts(carts) { return write(FILES.CARTS, carts); }
+const CART_JSON_FIELDS = ['items'];
 
-function getCartByUserId(userId) {
-  return getCarts().find(c => c.user_id == userId) || null;
+async function getCarts() {
+  const rows = await query('SELECT * FROM carts ORDER BY id DESC');
+  return rows.map(r => parseJsonField(r, CART_JSON_FIELDS));
 }
 
-function updateCart(cart) {
-  const carts = getCarts();
-  const idx = carts.findIndex(c => c.user_id == cart.user_id);
-  if (idx !== -1) {
-    carts[idx] = cart;
+async function saveCarts(carts) {
+  return true;
+}
+
+async function getCartByUserId(userId) {
+  const rows = await query('SELECT * FROM carts WHERE user_id = ? LIMIT 1', [userId]);
+  return parseJsonField(rows[0] || null, CART_JSON_FIELDS);
+}
+
+async function updateCart(cart) {
+  const data = stringifyJsonField(cart, CART_JSON_FIELDS);
+  const existing = await getCartByUserId(cart.user_id);
+  if (existing) {
+    const fields = Object.keys(data).filter(k => !['id', 'user_id', 'created_at'].includes(k));
+    const setClause = fields.map(f => `${f} = ?`).join(', ');
+    const values = fields.map(f => data[f]);
+    values.push(cart.user_id);
+    await query(`UPDATE carts SET ${setClause} WHERE user_id = ?`, values);
   } else {
-    carts.push(cart);
+    const fields = Object.keys(data).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+    const placeholders = fields.map(() => '?').join(',');
+    const values = fields.map(f => data[f]);
+    await query(`INSERT INTO carts (${fields.join(',')}) VALUES (${placeholders})`, values);
   }
-  return saveCarts(carts);
+  return true;
 }
 
 // ========== 地址相关 ==========
-function getAddresses() { return read(FILES.ADDRESSES); }
-function saveAddresses(addresses) { return write(FILES.ADDRESSES, addresses); }
-
-function getAddressesByUserId(userId) {
-  return getAddresses().filter(a => a.user_id == userId);
+async function getAddresses() {
+  return await query('SELECT * FROM addresses ORDER BY created_at DESC');
 }
 
-function addAddress(address) {
-  const addresses = getAddresses();
-  // 兼容 PHP 后端的字符串 ID 格式
-  address.id = address.id || ('addr_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5));
-  address.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  addresses.push(address);
-  return saveAddresses(addresses) ? address.id : false;
+async function saveAddresses(addresses) {
+  return true;
 }
 
-function updateAddress(id, data) {
-  const addresses = getAddresses();
-  const idx = addresses.findIndex(a => a.id == id);
-  if (idx === -1) return false;
-  Object.keys(data).forEach(key => {
-    if (key !== 'id' && key !== 'created_at') {
-      addresses[idx][key] = data[key];
-    }
-  });
-  addresses[idx].updated_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  return saveAddresses(addresses);
+async function getAddressesByUserId(userId) {
+  return await query('SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, created_at DESC', [userId]);
 }
 
-function deleteAddress(id) {
-  const addresses = getAddresses();
-  const filtered = addresses.filter(a => a.id != id);
-  if (filtered.length === addresses.length) return false;
-  return saveAddresses(filtered);
+async function addAddress(address) {
+  const data = { ...address };
+  if (!data.id) {
+    data.id = 'addr_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  }
+  const fields = Object.keys(data).filter(k => !['created_at', 'updated_at'].includes(k));
+  const placeholders = fields.map(() => '?').join(',');
+  const values = fields.map(f => data[f]);
+  await query(`INSERT INTO addresses (${fields.join(',')}) VALUES (${placeholders})`, values);
+  return data.id;
 }
 
-function setDefaultAddress(userId, addressId) {
-  const addresses = getAddresses();
-  addresses.forEach(a => {
-    if (a.user_id == userId) {
-      a.is_default = (a.id == addressId) ? 1 : 0;
-    }
-  });
-  return saveAddresses(addresses);
+async function updateAddress(id, data) {
+  const clean = { ...data };
+  delete clean.id;
+  delete clean.created_at;
+  delete clean.updated_at;
+  const fields = Object.keys(clean);
+  if (fields.length === 0) return true;
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => clean[f]);
+  values.push(id);
+  await query(`UPDATE addresses SET ${setClause} WHERE id = ?`, values);
+  return true;
+}
+
+async function deleteAddress(id) {
+  await query('DELETE FROM addresses WHERE id = ?', [id]);
+  return true;
+}
+
+async function setDefaultAddress(userId, addressId) {
+  await query('UPDATE addresses SET is_default = 0 WHERE user_id = ?', [userId]);
+  await query('UPDATE addresses SET is_default = 1 WHERE id = ? AND user_id = ?', [addressId, userId]);
+  return true;
 }
 
 // ========== 解析 pattern 为珠子详情 ==========
-function parsePatternToBeadDetails(pattern) {
-  const beads = getBeads();
+async function parsePatternToBeadDetails(pattern) {
+  const beads = await getBeads();
   const details = [];
   if (!Array.isArray(pattern)) return details;
 
@@ -359,28 +447,48 @@ function parsePatternToBeadDetails(pattern) {
 }
 
 // ========== 支付相关 ==========
-function getPayments() { return read(FILES.PAYMENTS); }
-function savePayments(payments) { return write(FILES.PAYMENTS, payments); }
+async function getPayments() {
+  return await query('SELECT * FROM payments ORDER BY id DESC');
+}
 
-function addPayment(payment) {
-  const payments = getPayments();
-  payment.id = payments.length > 0 ? Math.max(...payments.map(p => p.id || 0)) + 1 : 1;
-  payment.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  payments.push(payment);
-  return savePayments(payments) ? payment.id : false;
+async function savePayments(payments) {
+  return true;
+}
+
+async function addPayment(payment) {
+  const data = { ...payment };
+  const fields = Object.keys(data).filter(k => !['id', 'created_at'].includes(k));
+  const placeholders = fields.map(() => '?').join(',');
+  const values = fields.map(f => data[f]);
+  const sql = `INSERT INTO payments (${fields.join(',')}) VALUES (${placeholders})`;
+  const result = await query(sql, values);
+  return result.insertId;
+}
+
+async function updatePayment(id, data) {
+  const clean = { ...data };
+  delete clean.id;
+  delete clean.created_at;
+  const fields = Object.keys(clean);
+  if (fields.length === 0) return true;
+  const setClause = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => clean[f]);
+  values.push(id);
+  await query(`UPDATE payments SET ${setClause} WHERE id = ?`, values);
+  return true;
 }
 
 module.exports = {
   FILES,
   read,
   write,
-  getUsers, saveUsers, findUserByUsername, findUserById, findUserByOpenid, addUser, updateUser,
+  getUsers, saveUsers, findUserByUsername, findUserById, findUserByOpenid, addUser, updateUser, deleteUser,
   getDesigns, saveDesigns, findDesignByCode, findDesignById, addDesign, updateDesign, deleteDesign,
-  getOrders, saveOrders, addOrder, updateOrder, findOrderById,
+  getOrders, saveOrders, addOrder, updateOrder, findOrderById, deleteOrder,
   getLikes, saveLikes, isLiked, toggleLike,
   getBeads, saveBeads, findBeadById, addBead, updateBead, deleteBead,
   getCarts, saveCarts, getCartByUserId, updateCart,
   getAddresses, saveAddresses, getAddressesByUserId, addAddress, updateAddress, deleteAddress, setDefaultAddress,
   parsePatternToBeadDetails,
-  getPayments, savePayments, addPayment
+  getPayments, savePayments, addPayment, updatePayment
 };
