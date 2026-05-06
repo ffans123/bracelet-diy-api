@@ -26,10 +26,12 @@ function getPool() {
       port,
       user: MYSQL_USERNAME,
       password: MYSQL_PASSWORD,
-      database: 'bracelet_diy', // 默认数据库名
+      database: 'bracelet_diy',
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
+      connectTimeout: 8000,
+      acquireTimeout: 30000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
     });

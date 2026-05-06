@@ -71,11 +71,28 @@ app.use((req, res) => {
   res.status(404).json({ code: 404, message: '接口不存在', path: req.path });
 });
 
+// 全局未捕获异常处理
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] 未捕获异常:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] 未捕获Promise拒绝:', reason);
+});
+
 // 数据库初始化
 (async () => {
   try {
     const { setup } = require('./utils/initDB');
     await setup();
+
+    // 预热连接池
+    try {
+      const { query } = require('./utils/db');
+      await query('SELECT 1');
+      console.log('[MySQL] 连接池预热成功');
+    } catch (pingErr) {
+      console.error('[MySQL] 连接池预热失败:', pingErr.message);
+    }
 
     // 检查是否需要自动迁移历史数据
     try {
