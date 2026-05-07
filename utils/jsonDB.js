@@ -219,21 +219,61 @@ async function saveOrders(orders) {
   return true;
 }
 
+const ORDER_FIELD_MAP = {
+  designId: 'design_id',
+  totalPrice: 'total_price',
+  orderNo: 'order_no',
+  user_id: 'user_id',
+  order_no: 'order_no',
+  design_id: 'design_id',
+  design_name: 'design_name',
+  pattern: 'pattern',
+  bead_details: 'bead_details',
+  quantity: 'quantity',
+  total_price: 'total_price',
+  consignee: 'consignee',
+  phone: 'phone',
+  address: 'address',
+  remark: 'remark',
+  production_method: 'production_method',
+  packaging_method: 'packaging_method',
+  express_method: 'express_method',
+  extra_fee: 'extra_fee',
+  status: 'status',
+  address_id: 'address_id',
+  pay_method: 'pay_method',
+  paid_at: 'paid_at',
+  express_company: 'express_company',
+  express_no: 'express_no',
+  ship_time: 'ship_time'
+};
+
 async function addOrder(order) {
   const data = stringifyJsonField(order, ORDER_JSON_FIELDS);
-  const fields = Object.keys(data).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+  const mapped = {};
+  for (const [key, val] of Object.entries(data)) {
+    const dbField = ORDER_FIELD_MAP[key];
+    if (dbField && !['id', 'created_at', 'updated_at'].includes(dbField)) {
+      mapped[dbField] = val;
+    }
+  }
+  const fields = Object.keys(mapped);
   const placeholders = fields.map(() => '?').join(',');
-  const values = fields.map(f => data[f]);
+  const values = fields.map(f => mapped[f]);
   const sql = `INSERT INTO orders (${fields.join(',')}) VALUES (${placeholders})`;
   const result = await query(sql, values);
   return result.insertId;
 }
 
 async function updateOrder(id, data) {
-  const clean = stringifyJsonField(data, ORDER_JSON_FIELDS);
-  delete clean.id;
-  delete clean.created_at;
-  delete clean.updated_at;
+  const raw = stringifyJsonField(data, ORDER_JSON_FIELDS);
+  const clean = {};
+  for (const [key, val] of Object.entries(raw)) {
+    const dbField = ORDER_FIELD_MAP[key];
+    if (dbField && !['id', 'created_at', 'updated_at'].includes(dbField)) {
+      clean[dbField] = val;
+    }
+  }
   const fields = Object.keys(clean);
   if (fields.length === 0) return true;
   const setClause = fields.map(f => `${f} = ?`).join(', ');

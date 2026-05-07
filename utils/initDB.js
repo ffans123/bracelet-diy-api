@@ -46,16 +46,28 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    order_no VARCHAR(50) UNIQUE,
     design_id INT,
     design_name VARCHAR(200),
     pattern TEXT,
     bead_details TEXT,
     quantity INT DEFAULT 1,
     total_price DECIMAL(10,2) DEFAULT 0,
+    consignee VARCHAR(50),
+    phone VARCHAR(20),
+    address VARCHAR(200),
+    remark VARCHAR(500),
+    production_method VARCHAR(50),
+    packaging_method VARCHAR(50),
+    express_method VARCHAR(50),
+    extra_fee DECIMAL(10,2) DEFAULT 0,
     status ENUM('pending','paid','shipped','completed','cancelled') DEFAULT 'pending',
     address_id VARCHAR(50),
     pay_method VARCHAR(20),
     paid_at DATETIME,
+    express_company VARCHAR(50),
+    express_no VARCHAR(100),
+    ship_time DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id),
@@ -165,6 +177,19 @@ async function setup() {
     await addColumnIfNotExists(pool, 'designs', 'price', 'DECIMAL(10,2) DEFAULT 0');
     await addColumnIfNotExists(pool, 'designs', 'perimeter', 'DECIMAL(10,2) DEFAULT 0');
     await addColumnIfNotExists(pool, 'designs', 'bg_index', 'INT DEFAULT 0');
+    // orders 表缺失字段
+    await addColumnIfNotExists(pool, 'orders', 'order_no', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'orders', 'consignee', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'orders', 'phone', 'VARCHAR(20)');
+    await addColumnIfNotExists(pool, 'orders', 'address', 'VARCHAR(200)');
+    await addColumnIfNotExists(pool, 'orders', 'remark', 'VARCHAR(500)');
+    await addColumnIfNotExists(pool, 'orders', 'production_method', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'orders', 'packaging_method', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'orders', 'express_method', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'orders', 'extra_fee', 'DECIMAL(10,2) DEFAULT 0');
+    await addColumnIfNotExists(pool, 'orders', 'express_company', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'orders', 'express_no', 'VARCHAR(100)');
+    await addColumnIfNotExists(pool, 'orders', 'ship_time', 'DATETIME');
     console.log('[MySQL] 字段兼容性检查完成');
     console.log('[MySQL] 数据库初始化完成');
   } catch (err) {
