@@ -30,6 +30,10 @@ const TABLES = [
     pattern TEXT,
     image VARCHAR(500),
     bead_details TEXT,
+    mode VARCHAR(50),
+    price DECIMAL(10,2) DEFAULT 0,
+    perimeter DECIMAL(10,2) DEFAULT 0,
+    bg_index INT DEFAULT 0,
     like_count INT DEFAULT 0,
     is_public TINYINT DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -140,6 +144,20 @@ async function setup() {
   try {
     await initDatabase();
     await initTables();
+    // 兼容：为旧表添加缺失字段
+    const pool = getPool();
+    try {
+      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS mode VARCHAR(50)`);
+      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) DEFAULT 0`);
+      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS perimeter DECIMAL(10,2) DEFAULT 0`);
+      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS bg_index INT DEFAULT 0`);
+      console.log('[MySQL] 字段兼容性检查完成');
+    } catch (alterErr) {
+      // IF NOT EXISTS 可能在某些 MySQL 版本不支持，忽略重复添加错误
+      if (!alterErr.message.includes('Duplicate')) {
+        console.log('[MySQL] 字段兼容:', alterErr.message);
+      }
+    }
     console.log('[MySQL] 数据库初始化完成');
   } catch (err) {
     console.error('[MySQL] 初始化失败:', err.message);

@@ -147,21 +147,52 @@ async function findDesignById(id) {
   return parseJsonField(rows[0] || null, DESIGN_JSON_FIELDS);
 }
 
+// designs 表的有效字段映射
+const DESIGN_FIELD_MAP = {
+  name: 'title',
+  bgIndex: 'bg_index',
+  user_id: 'user_id',
+  design_code: 'design_code',
+  title: 'title',
+  pattern: 'pattern',
+  image: 'image',
+  bead_details: 'bead_details',
+  mode: 'mode',
+  price: 'price',
+  perimeter: 'perimeter',
+  bg_index: 'bg_index',
+  like_count: 'like_count',
+  is_public: 'is_public'
+};
+
 async function addDesign(design) {
   const data = stringifyJsonField(design, DESIGN_JSON_FIELDS);
-  const fields = Object.keys(data).filter(k => !['id', 'created_at', 'updated_at'].includes(k));
+  // 字段映射
+  const mapped = {};
+  for (const [key, val] of Object.entries(data)) {
+    const dbField = DESIGN_FIELD_MAP[key];
+    if (dbField && !['id', 'created_at', 'updated_at'].includes(dbField)) {
+      mapped[dbField] = val;
+    }
+  }
+  const fields = Object.keys(mapped);
   const placeholders = fields.map(() => '?').join(',');
-  const values = fields.map(f => data[f]);
+  const values = fields.map(f => mapped[f]);
   const sql = `INSERT INTO designs (${fields.join(',')}) VALUES (${placeholders})`;
   const result = await query(sql, values);
   return result.insertId;
 }
 
 async function updateDesign(id, data) {
-  const clean = stringifyJsonField(data, DESIGN_JSON_FIELDS);
-  delete clean.id;
-  delete clean.created_at;
-  delete clean.updated_at;
+  const raw = stringifyJsonField(data, DESIGN_JSON_FIELDS);
+  // 字段映射
+  const clean = {};
+  for (const [key, val] of Object.entries(raw)) {
+    const dbField = DESIGN_FIELD_MAP[key];
+    if (dbField && !['id', 'created_at', 'updated_at'].includes(dbField)) {
+      clean[dbField] = val;
+    }
+  }
   const fields = Object.keys(clean);
   if (fields.length === 0) return true;
   const setClause = fields.map(f => `${f} = ?`).join(', ');
