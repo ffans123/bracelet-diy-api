@@ -50,7 +50,7 @@ router.get('/list', auth.requireAuth, asyncHandler(async (req, res) => {
           order.pattern = design.pattern || [];
           order.mode = design.mode;
           order.unit_price = design.price;
-          order.cover_image = design.cover_image || '';
+          order.cover_image = design.image || design.cover_image || '';
           order.bead_details = await db.parsePatternToBeadDetails(design.pattern || []);
         }
       }
@@ -159,7 +159,7 @@ router.post('/create', auth.requireAuth, asyncHandler(async (req, res) => {
     order.pattern = pattern || [];
     order.mode = design.mode;
     order.unit_price = design.price;
-    order.cover_image = design.cover_image || '';
+    order.cover_image = design.image || design.cover_image || '';
     order.bead_details = await db.parsePatternToBeadDetails(pattern || []);
 
     R.success(res, { order, order_no: orderNo }, '订单创建成功');
@@ -171,7 +171,12 @@ router.post('/create', auth.requireAuth, asyncHandler(async (req, res) => {
 // POST /order/cancel - 取消订单
 router.post('/cancel', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
-    const { id } = req.body;
+    let { id } = req.body;
+    // 兼容前端可能发送 { id: { id: 61 } } 的嵌套格式
+    if (typeof id === 'object' && id !== null && id.id !== undefined) {
+      id = id.id;
+    }
+    id = parseInt(id, 10);
     const order = await db.findOrderById(id);
     if (!order || order.user_id != req.user.id) {
       return R.error(res, '订单不存在');

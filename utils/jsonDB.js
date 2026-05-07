@@ -474,6 +474,7 @@ async function parsePatternToBeadDetails(pattern) {
   for (const item of pattern) {
     let beadId = null;
     let type = 'unknown';
+    const code = String(item);
 
     if (typeof item === 'object' && item !== null && item.mat !== undefined) {
       beadId = parseInt(item.mat);
@@ -481,12 +482,16 @@ async function parsePatternToBeadDetails(pattern) {
     } else if (typeof item === 'string') {
       const dynamicMatch = item.match(/^dynamic_(\d+)$/);
       const presetMatch = item.match(/^[a-z]+_(\d+)$/);
+      const simpleCodeMatch = item.match(/^[a-z]+\d+$/i);
       if (dynamicMatch) {
         beadId = parseInt(dynamicMatch[1]);
         type = 'dynamic';
       } else if (presetMatch) {
         beadId = parseInt(presetMatch[1]);
         type = 'preset';
+      } else if (simpleCodeMatch) {
+        // 简单编码如 w1, b2, k3， beads 表中无直接映射
+        type = 'custom';
       } else if (!isNaN(parseInt(item))) {
         beadId = parseInt(item);
         type = 'numeric';
@@ -501,7 +506,7 @@ async function parsePatternToBeadDetails(pattern) {
       if (bead) {
         details.push({
           id: beadId,
-          raw_id: typeof item === 'string' ? item : String(beadId),
+          raw_id: code,
           name: bead.name,
           category: bead.category,
           color_family: bead.color_family,
@@ -511,8 +516,23 @@ async function parsePatternToBeadDetails(pattern) {
           color: bead.color || '#9E9E9E',
           type: bead.type || 'dynamic'
         });
+        continue;
       }
     }
+
+    // 找不到对应珠子时，返回编码占位信息，保证珠子数量正确
+    details.push({
+      id: null,
+      raw_id: code,
+      name: code,
+      category: '未知',
+      color_family: '',
+      size: '',
+      price: 0,
+      image: '',
+      color: '#9E9E9E',
+      type: type
+    });
   }
   return details;
 }
