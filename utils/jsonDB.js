@@ -477,7 +477,7 @@ async function parsePatternToBeadDetails(pattern) {
     const code = String(item);
 
     if (typeof item === 'object' && item !== null && item.mat !== undefined) {
-      beadId = parseInt(item.mat);
+      beadId = parseInt(item.id || item.mat);
       type = 'sandbox';
     } else if (typeof item === 'string') {
       const dynamicMatch = item.match(/^dynamic_(\d+)$/);
