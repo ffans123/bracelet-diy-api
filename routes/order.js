@@ -26,21 +26,33 @@ router.get('/list', auth.requireAuth, asyncHandler(async (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
     const list = orders.slice(offset, offset + parseInt(pageSize));
 
-    // 解析 pattern
-    const designs = await db.getDesigns();
+    // 解析 pattern（优先使用订单中已存储的信息）
     for (const order of list) {
-      const design = designs.find(d => d.id == order.design_id);
-      if (design) {
-        order.design_name = design.name;
-        let pattern = design.pattern;
-        if (typeof pattern === 'string') {
-          try { pattern = JSON.parse(pattern); } catch { pattern = []; }
+      // 解析订单中存储的 pattern
+      let pattern = order.pattern;
+      if (typeof pattern === 'string') {
+        try { pattern = JSON.parse(pattern); } catch { pattern = []; }
+      }
+      order.pattern = pattern || [];
+
+      // 解析订单中存储的 bead_details
+      let beadDetails = order.bead_details;
+      if (typeof beadDetails === 'string') {
+        try { beadDetails = JSON.parse(beadDetails); } catch { beadDetails = []; }
+      }
+      order.bead_details = beadDetails || [];
+
+      // 如果没有存储 design_name，尝试从 designs 表关联
+      if (!order.design_name) {
+        const design = await db.findDesignByCode(order.design_id) || await db.findDesignById(order.design_id);
+        if (design) {
+          order.design_name = design.title || design.name || '未命名设计';
+          order.pattern = design.pattern || [];
+          order.mode = design.mode;
+          order.unit_price = design.price;
+          order.cover_image = design.cover_image || '';
+          order.bead_details = await db.parsePatternToBeadDetails(design.pattern || []);
         }
-        order.pattern = pattern;
-        order.mode = design.mode;
-        order.unit_price = design.price;
-        order.cover_image = design.cover_image || '';
-        order.bead_details = await db.parsePatternToBeadDetails(pattern);
       }
     }
 
@@ -58,15 +70,26 @@ router.get('/detail', auth.requireAuth, asyncHandler(async (req, res) => {
     if (!order || order.user_id != req.user.id) {
       return R.error(res, '订单不存在');
     }
-    const design = await db.findDesignById(order.design_id);
-    if (design) {
-      order.design_name = design.name;
-      let pattern = design.pattern;
-      if (typeof pattern === 'string') {
-        try { pattern = JSON.parse(pattern); } catch { pattern = []; }
+    // 解析订单中存储的 pattern 和 bead_details
+    let pattern = order.pattern;
+    if (typeof pattern === 'string') {
+      try { pattern = JSON.parse(pattern); } catch { pattern = []; }
+    }
+    order.pattern = pattern || [];
+    let beadDetails = order.bead_details;
+    if (typeof beadDetails === 'string') {
+      try { beadDetails = JSON.parse(beadDetails); } catch { beadDetails = []; }
+    }
+    order.bead_details = beadDetails || [];
+
+    // 如果没有 design_name，尝试从 designs 表关联
+    if (!order.design_name) {
+      const design = await db.findDesignByCode(order.design_id) || await db.findDesignById(order.design_id);
+      if (design) {
+        order.design_name = design.title || design.name || '未命名设计';
+        order.pattern = design.pattern || [];
+        order.bead_details = await db.parsePatternToBeadDetails(design.pattern || []);
       }
-      order.pattern = pattern;
-      order.bead_details = await db.parsePatternToBeadDetails(pattern);
     }
     R.success(res, order, '获取成功');
   } catch (e) {
@@ -90,7 +113,7 @@ router.post('/create', auth.requireAuth, asyncHandler(async (req, res) => {
     if (!address) return R.error(res, '收货地址不能为空');
     if (!/^1[3-9]\d{9}$/.test(phone)) return R.error(res, '手机号格式不正确');
 
-    const design = await db.findDesignById(designId) || await db.findDesignByCode(designId);
+    const design = await db.findDesignByCode(designId) || await db.findDesignById(designId);
     if (!design) return R.notFound(res, '设计不存在');
 
     let finalPrice = parseFloat(totalPrice);
@@ -108,6 +131,9 @@ router.post('/create', auth.requireAuth, asyncHandler(async (req, res) => {
       user_id: userId,
       order_no: orderNo,
       design_id: designId,
+      design_name: design.title || design.name || '未命名设计',
+      pattern: design.pattern,
+      bead_details: await db.parsePatternToBeadDetails(design.pattern || []),
       quantity: parseInt(quantity),
       total_price: finalPrice,
       consignee,
@@ -125,16 +151,16 @@ router.post('/create', auth.requireAuth, asyncHandler(async (req, res) => {
     if (!orderId) return R.serverError(res, '创建订单失败');
 
     const order = await db.findOrderById(orderId);
-    order.design_name = design.name;
+    order.design_name = design.title || design.name || '未命名设计';
     let pattern = design.pattern;
     if (typeof pattern === 'string') {
       try { pattern = JSON.parse(pattern); } catch { pattern = []; }
     }
-    order.pattern = pattern;
+    order.pattern = pattern || [];
     order.mode = design.mode;
     order.unit_price = design.price;
     order.cover_image = design.cover_image || '';
-    order.bead_details = await db.parsePatternToBeadDetails(pattern);
+    order.bead_details = await db.parsePatternToBeadDetails(pattern || []);
 
     R.success(res, { order, order_no: orderNo }, '订单创建成功');
   } catch (e) {
