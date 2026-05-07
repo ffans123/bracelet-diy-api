@@ -237,9 +237,11 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
       return R.error(res, '订单状态不正确');
     }
 
-    // 检查微信支付配置
-    if (!isConfigReady()) {
-      // 配置不完整时回退到模拟支付，不需要 openid
+    // 获取用户信息
+    const user = await db.findUserById(req.user.id);
+
+    // 如果没有 openid 或微信支付配置不完整，都回退到模拟支付
+    if (!user || !user.openid || !isConfigReady()) {
       const payNo = 'PAY' + Date.now();
       await db.addPayment({
         user_id: req.user.id,
@@ -253,12 +255,6 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
       const payurl = `${protocol}://${host}/pay/mock?pay_no=${payNo}`;
       return R.success(res, { pay_no: payNo, amount: order.total_price, payurl, mock: true }, '请前往支付（模拟）');
-    }
-
-    // 获取用户信息（真实微信支付需要openid）
-    const user = await db.findUserById(req.user.id);
-    if (!user || !user.openid) {
-      return R.error(res, '用户信息不完整，请重新微信登录');
     }
 
     // 调用微信支付统一下单（JSAPI）
