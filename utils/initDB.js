@@ -140,24 +140,32 @@ async function initTables() {
   console.log('[MySQL] 所有表已就绪');
 }
 
+async function addColumnIfNotExists(pool, table, column, def) {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column]
+    );
+    if (rows.length === 0) {
+      await pool.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+      console.log(`[MySQL] 添加字段 ${table}.${column}`);
+    }
+  } catch (err) {
+    console.log(`[MySQL] 检查字段 ${table}.${column}:`, err.message);
+  }
+}
+
 async function setup() {
   try {
     await initDatabase();
     await initTables();
-    // 兼容：为旧表添加缺失字段
+    // 兼容：为旧表添加缺失字段（兼容 MySQL 5.7）
     const pool = getPool();
-    try {
-      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS mode VARCHAR(50)`);
-      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) DEFAULT 0`);
-      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS perimeter DECIMAL(10,2) DEFAULT 0`);
-      await pool.execute(`ALTER TABLE designs ADD COLUMN IF NOT EXISTS bg_index INT DEFAULT 0`);
-      console.log('[MySQL] 字段兼容性检查完成');
-    } catch (alterErr) {
-      // IF NOT EXISTS 可能在某些 MySQL 版本不支持，忽略重复添加错误
-      if (!alterErr.message.includes('Duplicate')) {
-        console.log('[MySQL] 字段兼容:', alterErr.message);
-      }
-    }
+    await addColumnIfNotExists(pool, 'designs', 'mode', 'VARCHAR(50)');
+    await addColumnIfNotExists(pool, 'designs', 'price', 'DECIMAL(10,2) DEFAULT 0');
+    await addColumnIfNotExists(pool, 'designs', 'perimeter', 'DECIMAL(10,2) DEFAULT 0');
+    await addColumnIfNotExists(pool, 'designs', 'bg_index', 'INT DEFAULT 0');
+    console.log('[MySQL] 字段兼容性检查完成');
     console.log('[MySQL] 数据库初始化完成');
   } catch (err) {
     console.error('[MySQL] 初始化失败:', err.message);
