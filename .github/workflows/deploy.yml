@@ -23,7 +23,7 @@ jobs:
       - name: Login and Deploy
         run: |
           printf 'n\nn\n' | tcb login --apiKeyId "$API_KEY_ID" --apiKey "$API_KEY"
-          tcb cloudrun deploy -e prod-d6gl3tboe2697ec1e -s express-df5d --force
+          yes n | tcb cloudrun deploy -e prod-d6gl3tboe2697ec1e -s express-df5d --force
         env:
           API_KEY_ID: ${{ secrets.TCB_API_KEY_ID }}
           API_KEY: ${{ secrets.TCB_API_KEY }}
