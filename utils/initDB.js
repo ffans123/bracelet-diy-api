@@ -47,7 +47,7 @@ const TABLES = [
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     order_no VARCHAR(50) UNIQUE,
-    design_id INT,
+    design_id VARCHAR(50),
     design_name VARCHAR(200),
     pattern TEXT,
     bead_details TEXT,
@@ -190,6 +190,13 @@ async function setup() {
     await addColumnIfNotExists(pool, 'orders', 'express_company', 'VARCHAR(50)');
     await addColumnIfNotExists(pool, 'orders', 'express_no', 'VARCHAR(100)');
     await addColumnIfNotExists(pool, 'orders', 'ship_time', 'DATETIME');
+    // 兼容：orders.design_id 从 INT 改为 VARCHAR(50)
+    try {
+      await pool.execute(`ALTER TABLE orders MODIFY COLUMN design_id VARCHAR(50)`);
+      console.log('[MySQL] orders.design_id 类型已兼容');
+    } catch (modifyErr) {
+      console.log('[MySQL] orders.design_id 类型检查:', modifyErr.message);
+    }
     console.log('[MySQL] 字段兼容性检查完成');
     console.log('[MySQL] 数据库初始化完成');
   } catch (err) {
