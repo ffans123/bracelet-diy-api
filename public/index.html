@@ -1003,7 +1003,7 @@
                                             <td className="px-4 py-3">{user.username}</td>
                                             <td className="px-4 py-3">{user.nickname || '-'}</td>
                                             <td className="px-4 py-3">{getRoleBadge(user.role)}</td>
-                                            <td className="px-4 py-3 font-bold text-green-600">¥{(user.balance || 0).toFixed(2)}</td>
+                                            <td className="px-4 py-3 font-bold text-green-600">¥{(parseFloat(user.balance) || 0).toFixed(2)}</td>
                                             <td className="px-4 py-3">{user.order_count || 0}</td>
                                             <td className="px-4 py-3 text-sm">
                                                 {user.created_at
@@ -1118,7 +1118,7 @@
                                         <div>
                                             <label className="block text-sm font-medium mb-1">当前余额</label>
                                             <div className="w-full px-3 py-2 border rounded bg-gray-100">
-                                                ¥{(users.find(u => u.id === rechargeData.user_id)?.balance || 0).toFixed(2)}
+                                                ¥{(parseFloat(users.find(u => u.id === rechargeData.user_id)?.balance) || 0).toFixed(2)}
                                             </div>
                                         </div>
                                         <div>
