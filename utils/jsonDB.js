@@ -343,7 +343,12 @@ async function toggleLike(userId, designId) {
 
 // ========== 珠子相关 ==========
 async function getBeads() {
-  return await query('SELECT * FROM beads ORDER BY id ASC');
+  const beads = await query('SELECT * FROM beads ORDER BY id ASC');
+  const COS_BASE_URL = 'https://7072-prod-d6gl3tboe2697ec1e-1425986073.cos.ap-shanghai.myqcloud.com/beads';
+  return beads.map(b => ({
+    ...b,
+    image: b.image || `${COS_BASE_URL}/${b.id}.png`
+  }));
 }
 
 async function saveBeads(beads) {
