@@ -190,6 +190,8 @@ async function setup() {
     await addColumnIfNotExists(pool, 'orders', 'express_company', 'VARCHAR(50)');
     await addColumnIfNotExists(pool, 'orders', 'express_no', 'VARCHAR(100)');
     await addColumnIfNotExists(pool, 'orders', 'ship_time', 'DATETIME');
+    await addColumnIfNotExists(pool, 'orders', 'cover_image', 'VARCHAR(500)');
+    await addColumnIfNotExists(pool, 'designs', 'cover_image', 'VARCHAR(500)');
     // 兼容：orders.design_id 从 INT 改为 VARCHAR(50)
     try {
       await pool.execute(`ALTER TABLE orders MODIFY COLUMN design_id VARCHAR(50)`);

@@ -42,15 +42,17 @@ router.get('/list', auth.requireAuth, asyncHandler(async (req, res) => {
       }
       order.bead_details = beadDetails || [];
 
-      // 如果没有存储 design_name，尝试从 designs 表关联
-      if (!order.design_name) {
-        const design = await db.findDesignByCode(order.design_id) || await db.findDesignById(order.design_id);
-        if (design) {
+      // 补充 design 关联信息（cover_image、缺失的 bead_details 等）
+      const design = await db.findDesignByCode(order.design_id) || await db.findDesignById(order.design_id);
+      if (design) {
+        if (!order.design_name) {
           order.design_name = design.title || design.name || '未命名设计';
-          order.pattern = design.pattern || [];
-          order.mode = design.mode;
-          order.unit_price = design.price;
-          order.cover_image = design.image || design.cover_image || '';
+        }
+        order.mode = design.mode;
+        order.unit_price = design.price;
+        order.cover_image = order.cover_image || design.cover_image || design.image || '';
+        // 只有 bead_details 为 null/undefined 时才从 design 重新解析，不覆盖空数组 []
+        if (order.bead_details === null || order.bead_details === undefined) {
           order.bead_details = await db.parsePatternToBeadDetails(design.pattern || []);
         }
       }
@@ -82,12 +84,15 @@ router.get('/detail', auth.requireAuth, asyncHandler(async (req, res) => {
     }
     order.bead_details = beadDetails || [];
 
-    // 如果没有 design_name，尝试从 designs 表关联
-    if (!order.design_name) {
-      const design = await db.findDesignByCode(order.design_id) || await db.findDesignById(order.design_id);
-      if (design) {
+    // 补充 design 关联信息
+    const design = await db.findDesignByCode(order.design_id) || await db.findDesignById(order.design_id);
+    if (design) {
+      if (!order.design_name) {
         order.design_name = design.title || design.name || '未命名设计';
-        order.pattern = design.pattern || [];
+      }
+      order.cover_image = order.cover_image || design.cover_image || design.image || '';
+      // 只有 bead_details 为 null/undefined 时才从 design 重新解析
+      if (order.bead_details === null || order.bead_details === undefined) {
         order.bead_details = await db.parsePatternToBeadDetails(design.pattern || []);
       }
     }
@@ -145,6 +150,7 @@ router.post('/create', auth.requireAuth, asyncHandler(async (req, res) => {
       express_method: expressMethod,
       rope_color: ropeColor,
       extra_fee: parseFloat(extraFee),
+      cover_image: design.cover_image || '',
       status: 'pending'
     });
 

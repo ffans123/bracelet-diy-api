@@ -81,6 +81,11 @@ function getTokenFromRequest(req) {
     if (match) return match[1];
   }
 
+  // 从 URL query 参数获取（兼容小程序 uploadFile header 丢失问题）
+  if (req.query && req.query.token) {
+    return req.query.token;
+  }
+
   // 从 cookie 获取
   if (req.cookies && req.cookies.auth_token) {
     return req.cookies.auth_token;

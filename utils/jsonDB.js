@@ -162,7 +162,9 @@ const DESIGN_FIELD_MAP = {
   perimeter: 'perimeter',
   bg_index: 'bg_index',
   like_count: 'like_count',
-  is_public: 'is_public'
+  is_public: 'is_public',
+  coverImage: 'cover_image',
+  cover_image: 'cover_image'
 };
 
 async function addDesign(design) {
@@ -245,7 +247,8 @@ const ORDER_FIELD_MAP = {
   paid_at: 'paid_at',
   express_company: 'express_company',
   express_no: 'express_no',
-  ship_time: 'ship_time'
+  ship_time: 'ship_time',
+  cover_image: 'cover_image'
 };
 
 async function addOrder(order) {
