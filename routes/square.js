@@ -29,6 +29,8 @@ router.get('/list', asyncHandler(async (req, res) => {
       if (typeof d.pattern === 'string') {
         try { d.pattern = JSON.parse(d.pattern); } catch { d.pattern = []; }
       }
+      // 添加珠子详情
+      d.bead_details = await db.parsePatternToBeadDetails(d.pattern || []);
       // 添加作者信息
       const user = await db.findUserById(d.user_id);
       d.author_name = user ? (user.nickname || user.username) : '匿名';
