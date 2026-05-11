@@ -8,9 +8,10 @@ const auth = require('../utils/auth');
 const R = require('../utils/response');
 const asyncHandler = require('../utils/asyncHandler');
 
-// POST /pay/create_wxpay - 创建微信支付
+// POST /pay/create_wxpay - 创建微信支付（真实 tenpay 统一下单）
 router.post('/create_wxpay', auth.requireAuth, asyncHandler(async (req, res) => {
   try {
+    const { isConfigReady, getPayApi, config: wxConfig } = require('../config/wechatPay');
     const { order_id } = req.body;
     const order = await db.findOrderById(order_id);
     if (!order || order.user_id != req.user.id) {
@@ -20,25 +21,52 @@ router.post('/create_wxpay', auth.requireAuth, asyncHandler(async (req, res) => 
       return R.error(res, '订单状态不正确');
     }
 
-    // 创建支付记录
+    // 获取当前用户信息（需要 openid）
+    const user = await db.findUserById(req.user.id);
+    if (!user || !user.openid) {
+      return R.error(res, '用户信息不完整，无法发起支付');
+    }
+
+    // 微信支付未配置时的降级提示
+    if (!isConfigReady()) {
+      return R.error(res, '微信支付未配置，请联系管理员');
+    }
+
+    // 调用微信支付统一下单（JSAPI）
+    const payApi = getPayApi();
     const payNo = 'PAY' + Date.now();
+    const totalFee = Math.round(order.total_price * 100); // 转为分
+
+    const unifiedOrder = await payApi.unifiedOrder({
+      out_trade_no: payNo,
+      body: order.design_name || '臻流手串-订单' + order.id,
+      total_fee: totalFee,
+      openid: user.openid,
+      notify_url: wxConfig.notifyUrl || `${req.protocol}://${req.get('host')}/pay/notify`,
+      trade_type: 'JSAPI',
+    });
+
+    // 创建支付记录
     await db.addPayment({
       user_id: req.user.id,
       order_id: order_id,
       pay_no: payNo,
       amount: order.total_price,
       pay_method: 'wxpay',
-      status: 'pending'
+      status: 'pending',
+      prepay_id: unifiedOrder.prepay_id,
     });
 
-    // 返回模拟支付参数（实际项目中需要调用微信支付API）
+    // 构造 JSAPI 支付参数
+    const payParams = payApi.getPayParamsByPrepay(unifiedOrder, 'MD5');
+
     R.success(res, {
       pay_no: payNo,
       amount: order.total_price,
-      // 这里应该返回微信统一下单参数
-      // timeStamp, nonceStr, package, signType, paySign
+      ...payParams,
     }, '支付单创建成功');
   } catch (e) {
+    console.error('[create_wxpay] error:', e);
     R.serverError(res, '创建支付失败：' + e.message);
   }
 }));
