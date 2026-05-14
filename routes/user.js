@@ -38,8 +38,9 @@ router.post('/login', asyncHandler(async (req, res) => {
     }
 
     delete user.password;
-    const token = auth.generateToken(user.id);
-    R.success(res, { token, user }, '登录成功');
+    const token = auth.generateAccessToken(user.id);
+    const refreshToken = auth.generateRefreshToken(user.id);
+    R.success(res, { token, user, refresh_token: refreshToken }, '登录成功');
   } catch (e) {
     R.serverError(res, '登录失败：' + e.message);
   }
@@ -77,8 +78,9 @@ router.post('/register', asyncHandler(async (req, res) => {
 
     const user = await db.findUserById(userId);
     delete user.password;
-    const token = auth.generateToken(userId);
-    R.success(res, { token, user }, '注册成功');
+    const token = auth.generateAccessToken(userId);
+    const refreshToken = auth.generateRefreshToken(userId);
+    R.success(res, { token, user, refresh_token: refreshToken }, '注册成功');
   } catch (e) {
     R.serverError(res, '注册失败：' + e.message);
   }
@@ -99,8 +101,9 @@ router.post('/wx_login_demo', asyncHandler(async (req, res) => {
       user = await db.findUserById(userId);
     }
     delete user.password;
-    const token = auth.generateToken(user.id);
-    R.success(res, { token, user }, '演示登录成功');
+    const token = auth.generateAccessToken(user.id);
+    const refreshToken = auth.generateRefreshToken(user.id);
+    R.success(res, { token, user, refresh_token: refreshToken }, '演示登录成功');
   } catch (e) {
     R.serverError(res, '演示登录失败：' + e.message);
   }
@@ -156,8 +159,9 @@ router.post('/wx_login', asyncHandler(async (req, res) => {
     }
 
     delete user.password;
-    const token = auth.generateToken(user.id);
-    R.success(res, { token, user, openid }, '登录成功');
+    const token = auth.generateAccessToken(user.id);
+    const refreshToken = auth.generateRefreshToken(user.id);
+    R.success(res, { token, user, refresh_token: refreshToken, openid }, '登录成功');
   } catch (e) {
     console.error('wx_login error:', e);
     R.serverError(res, '登录失败：' + e.message);
@@ -260,6 +264,33 @@ router.post('/change_password', asyncHandler(async (req, res) => {
     R.success(res, null, '密码修改成功');
   } catch (e) {
     R.serverError(res, '修改失败：' + e.message);
+  }
+}));
+
+// POST /user/refresh_token - 用 refresh_token 换取新的 access_token
+router.post('/refresh_token', asyncHandler(async (req, res) => {
+  try {
+    const { refresh_token } = req.body;
+    if (!refresh_token) {
+      return R.error(res, 'refresh_token 不能为空');
+    }
+
+    const payload = auth.verifyRefreshToken(refresh_token);
+    if (!payload || !payload.user_id) {
+      return R.error(res, 'refresh_token 无效或已过期');
+    }
+
+    const user = await db.findUserById(payload.user_id);
+    if (!user) {
+      return R.error(res, '用户不存在');
+    }
+
+    delete user.password;
+    const token = auth.generateAccessToken(user.id);
+    const newRefreshToken = auth.generateRefreshToken(user.id);
+    R.success(res, { token, refresh_token: newRefreshToken, user }, '刷新成功');
+  } catch (e) {
+    R.serverError(res, '刷新失败：' + e.message);
   }
 }));
 

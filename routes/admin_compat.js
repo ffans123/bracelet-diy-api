@@ -57,8 +57,9 @@ router.post('/user/admin_login.php', asyncHandler(async (req, res) => {
       return R.error(res, '用户名或密码错误');
     }
     delete user.password;
-    const token = auth.generateToken(user.id);
-    R.success(res, { token, user }, '登录成功');
+    const token = auth.generateAccessToken(user.id);
+    const refreshToken = auth.generateRefreshToken(user.id);
+    R.success(res, { token, user, refresh_token: refreshToken }, '登录成功');
   } catch (e) {
     R.serverError(res, '登录失败：' + e.message);
   }

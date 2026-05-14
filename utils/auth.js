@@ -3,8 +3,14 @@
  */
 const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production-2024';
-const JWT_EXPIRE = 604800; // 7天
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('[FATAL] 环境变量 JWT_SECRET 未配置，JWT 认证不可用。请立即配置后重启服务。');
+  // 抛出错误阻止服务继续使用不安全的默认密钥
+  throw new Error('JWT_SECRET environment variable is required');
+}
+const ACCESS_EXPIRE = 7200;      // access_token 有效期：2小时
+const REFRESH_EXPIRE = 2592000; // refresh_token 有效期：30天
 
 function base64UrlEncode(data) {
   return Buffer.from(data)
@@ -23,12 +29,15 @@ function base64UrlDecode(data) {
   return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
 }
 
-function generateToken(userId, expire = null) {
+function generateToken(userId, expire = null, tokenType = 'access') {
   const header = JSON.stringify({ typ: 'JWT', alg: 'HS256' });
+  const now = Math.floor(Date.now() / 1000);
+  const defaultExpire = tokenType === 'refresh' ? REFRESH_EXPIRE : ACCESS_EXPIRE;
   const payload = JSON.stringify({
     user_id: userId,
-    iat: Math.floor(Date.now() / 1000),
-    exp: expire || Math.floor(Date.now() / 1000) + JWT_EXPIRE
+    type: tokenType,
+    iat: now,
+    exp: expire || now + defaultExpire
   });
 
   const base64UrlHeader = base64UrlEncode(header);
@@ -43,7 +52,15 @@ function generateToken(userId, expire = null) {
   return base64UrlHeader + '.' + base64UrlPayload + '.' + base64UrlSignature;
 }
 
-function verifyToken(token) {
+function generateAccessToken(userId, expire = null) {
+  return generateToken(userId, expire, 'access');
+}
+
+function generateRefreshToken(userId, expire = null) {
+  return generateToken(userId, expire, 'refresh');
+}
+
+function verifyToken(token, expectedType = 'access') {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return false;
@@ -62,6 +79,11 @@ function verifyToken(token) {
     // 解析 payload
     const decodedPayload = JSON.parse(base64UrlDecode(payload));
 
+    // 检查 token 类型
+    if (decodedPayload.type && decodedPayload.type !== expectedType) {
+      return false;
+    }
+
     // 检查过期时间
     if (decodedPayload.exp && decodedPayload.exp < Math.floor(Date.now() / 1000)) {
       return false;
@@ -71,6 +93,10 @@ function verifyToken(token) {
   } catch {
     return false;
   }
+}
+
+function verifyRefreshToken(token) {
+  return verifyToken(token, 'refresh');
 }
 
 function getTokenFromRequest(req) {
@@ -127,10 +153,15 @@ function requireAdmin(req, res, next) {
 
 module.exports = {
   generateToken,
+  generateAccessToken,
+  generateRefreshToken,
   verifyToken,
+  verifyRefreshToken,
   getTokenFromRequest,
   getCurrentUser,
   requireAuth,
   requireAdmin,
-  JWT_SECRET
+  JWT_SECRET,
+  ACCESS_EXPIRE,
+  REFRESH_EXPIRE
 };
