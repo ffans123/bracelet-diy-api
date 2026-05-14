@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const axios = require('axios');
+const https = require('https');
 const db = require('../utils/jsonDB');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
@@ -122,8 +123,12 @@ router.post('/wx_login', asyncHandler(async (req, res) => {
     }
 
     // 请求微信 jscode2session
+    // 云托管环境中 Node.js 可能不信任系统 CA，使用自定义 httpsAgent 兼容
     const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${WECHAT_APPID}&secret=${WECHAT_SECRET}&js_code=${code}&grant_type=authorization_code`;
-    const wxRes = await axios.get(url, { timeout: 30000 });
+    const wxRes = await axios.get(url, {
+      timeout: 30000,
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+    });
     const result = wxRes.data;
 
     if (result.errcode) {
