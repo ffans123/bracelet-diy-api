@@ -10,15 +10,15 @@
  * - WECHAT_PAY_NOTIFY_URL: 支付结果通知地址（可选，默认自动拼接）
  */
 
-// 从环境变量读取配置
+// 从环境变量读取配置（trim 去除可能的前后空格）
 const config = {
-  appid: process.env.WECHAT_APPID,
-  mchid: process.env.WECHAT_MCHID,
-  partnerKey: process.env.WECHAT_PARTNER_KEY,
-  apiKey: process.env.WECHAT_PAY_API_KEY,
-  certSerialNo: process.env.WECHAT_PAY_CERT_SERIAL_NO,
-  privateKey: process.env.WECHAT_PAY_PRIVATE_KEY,
-  notifyUrl: process.env.WECHAT_PAY_NOTIFY_URL,
+  appid: (process.env.WECHAT_APPID || '').trim(),
+  mchid: (process.env.WECHAT_MCHID || '').trim(),
+  partnerKey: (process.env.WECHAT_PARTNER_KEY || '').trim(),
+  apiKey: (process.env.WECHAT_PAY_API_KEY || '').trim(),
+  certSerialNo: (process.env.WECHAT_PAY_CERT_SERIAL_NO || '').trim(),
+  privateKey: (process.env.WECHAT_PAY_PRIVATE_KEY || '').trim(),
+  notifyUrl: (process.env.WECHAT_PAY_NOTIFY_URL || '').trim(),
 };
 
 // 检查配置是否完整（V2 支付至少需 appid + mchid + partnerKey）
