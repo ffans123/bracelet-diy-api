@@ -7,6 +7,86 @@ const db = require('../utils/jsonDB');
 const auth = require('../utils/auth');
 const R = require('../utils/response');
 const asyncHandler = require('../utils/asyncHandler');
+const crypto = require('crypto');
+const https = require('https');
+const axios = require('axios');
+
+// ========== 原生微信支付 V2 统一下单（绕过 tenpay 库排查签名问题） ==========
+
+function buildXml(obj) {
+  let xml = '<xml>';
+  for (const [key, value] of Object.entries(obj)) {
+    xml += `<${key}><![CDATA[${value}]]></${key}>`;
+  }
+  xml += '</xml>';
+  return xml;
+}
+
+function parseXml(xml) {
+  const result = {};
+  const regex = /<(\w+)><!\[CDATA\[(.*?)\]\]><\/\w+>/g;
+  let match;
+  while ((match = regex.exec(xml)) !== null) {
+    result[match[1]] = match[2];
+  }
+  return result;
+}
+
+function wxSign(params, key) {
+  const sortedKeys = Object.keys(params)
+    .filter(k => params[k] !== '' && params[k] !== undefined && k !== 'sign')
+    .sort();
+  const stringA = sortedKeys.map(k => `${k}=${params[k]}`).join('&');
+  const stringSignTemp = stringA + '&key=' + key;
+  const signValue = crypto.createHash('md5').update(stringSignTemp).digest('hex').toUpperCase();
+  return { signValue, stringSignTemp };
+}
+
+async function nativeUnifiedOrder(params, partnerKey) {
+  const { signValue, stringSignTemp } = wxSign(params, partnerKey);
+  params.sign = signValue;
+
+  console.log('[原生微信支付] 待签名字符串:', stringSignTemp);
+  console.log('[原生微信支付] 生成签名:', signValue);
+
+  const xml = buildXml(params);
+  console.log('[原生微信支付] 请求XML:', xml);
+
+  const res = await axios.post(
+    'https://api.mch.weixin.qq.com/pay/unifiedorder',
+    xml,
+    {
+      headers: { 'Content-Type': 'text/xml' },
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      timeout: 30000,
+    }
+  );
+
+  console.log('[原生微信支付] 响应XML:', res.data);
+  const result = parseXml(res.data);
+  console.log('[原生微信支付] 解析结果:', result);
+
+  if (result.return_code !== 'SUCCESS') {
+    throw new Error(result.return_msg || '统一下单失败');
+  }
+  if (result.result_code !== 'SUCCESS') {
+    throw new Error(result.err_code_des || result.err_code || '业务失败');
+  }
+
+  return result;
+}
+
+function nativeGetPayParams(prepayId, appid, partnerKey) {
+  const params = {
+    appId: appid,
+    timeStamp: String(Math.floor(Date.now() / 1000)),
+    nonceStr: Math.random().toString(36).substring(2, 15),
+    package: 'prepay_id=' + prepayId,
+    signType: 'MD5',
+  };
+  const { signValue } = wxSign(params, partnerKey);
+  return { ...params, paySign: signValue };
+}
 
 // GET /order/list - 订单列表
 router.get('/list', auth.requireAuth, asyncHandler(async (req, res) => {
@@ -301,15 +381,40 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
 
     try {
       console.log(`[微信支付] 统一下单开始: out_trade_no=${payNo}, total_fee=${totalFee}, openid=${user.openid?.substring(0, 8)}..., notify_url=${wxConfig.notifyUrl}`);
-      const unifiedOrder = await payApi.unifiedOrder({
-        out_trade_no: payNo,
-        body: order.design_name || '手串定制',
-        total_fee: totalFee,
-        openid: user.openid,
-        notify_url: wxConfig.notifyUrl || `${req.protocol}://${req.get('host')}/pay/notify`,
-        trade_type: 'JSAPI',
-      });
-      console.log('[微信支付] 统一下单成功:', unifiedOrder.prepay_id);
+
+      // === 先用原生实现调用（绕过 tenpay 库排查签名问题） ===
+      let unifiedOrderResult;
+      let useNative = false;
+      try {
+        const nativeParams = {
+          appid: wxConfig.appid,
+          mch_id: wxConfig.mchid,
+          nonce_str: Math.random().toString(36).substring(2, 15),
+          body: order.design_name || '手串定制',
+          out_trade_no: payNo,
+          total_fee: String(totalFee),
+          spbill_create_ip: req.ip || '127.0.0.1',
+          notify_url: wxConfig.notifyUrl || `${req.protocol}://${req.get('host')}/pay/notify`,
+          trade_type: 'JSAPI',
+          openid: user.openid,
+        };
+        unifiedOrderResult = await nativeUnifiedOrder(nativeParams, wxConfig.partnerKey);
+        useNative = true;
+        console.log('[微信支付] 原生统一下单成功:', unifiedOrderResult.prepay_id);
+      } catch (nativeErr) {
+        console.error('[微信支付] 原生统一下单失败:', nativeErr.message);
+        // 原生也失败，回退到 tenpay（理论上也会失败，但保留兼容）
+        const unifiedOrder = await payApi.unifiedOrder({
+          out_trade_no: payNo,
+          body: order.design_name || '手串定制',
+          total_fee: totalFee,
+          openid: user.openid,
+          notify_url: wxConfig.notifyUrl || `${req.protocol}://${req.get('host')}/pay/notify`,
+          trade_type: 'JSAPI',
+        });
+        unifiedOrderResult = { prepay_id: unifiedOrder.prepay_id };
+        console.log('[微信支付] tenpay 统一下单成功:', unifiedOrder.prepay_id);
+      }
 
       // 创建支付记录
       await db.addPayment({
@@ -319,11 +424,16 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
         amount: order.total_price,
         pay_method: 'wxpay',
         status: 'pending',
-        prepay_id: unifiedOrder.prepay_id,
+        prepay_id: unifiedOrderResult.prepay_id,
       });
 
       // 构造JSAPI支付参数
-      const payParams = payApi.getPayParamsByPrepay(unifiedOrder, 'MD5');
+      let payParams;
+      if (useNative) {
+        payParams = nativeGetPayParams(unifiedOrderResult.prepay_id, wxConfig.appid, wxConfig.partnerKey);
+      } else {
+        payParams = payApi.getPayParamsByPrepay(unifiedOrderResult, 'MD5');
+      }
 
       R.success(res, {
         pay_no: payNo,
