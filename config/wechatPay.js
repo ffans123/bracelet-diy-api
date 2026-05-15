@@ -40,6 +40,10 @@ function initPay() {
     return null;
   }
 
+  // 调试：打印 partnerKey 长度和前几位（不暴露完整密钥）
+  const pk = config.partnerKey || '';
+  console.log(`[微信支付] partnerKey 长度=${pk.length}, 前缀=${pk.substring(0, 4)}***, appid=${config.appid}, mchid=${config.mchid}`);
+
   try {
     const tenpay = require('tenpay');
     api = new tenpay({

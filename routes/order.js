@@ -300,6 +300,7 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
     const totalFee = Math.round(order.total_price * 100); // 转为分
 
     try {
+      console.log(`[微信支付] 统一下单开始: out_trade_no=${payNo}, total_fee=${totalFee}, openid=${user.openid?.substring(0, 8)}..., notify_url=${wxConfig.notifyUrl}`);
       const unifiedOrder = await payApi.unifiedOrder({
         out_trade_no: payNo,
         body: order.design_name || '手串定制',
@@ -308,6 +309,7 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
         notify_url: wxConfig.notifyUrl || `${req.protocol}://${req.get('host')}/pay/notify`,
         trade_type: 'JSAPI',
       });
+      console.log('[微信支付] 统一下单成功:', unifiedOrder.prepay_id);
 
       // 创建支付记录
       await db.addPayment({
@@ -329,7 +331,8 @@ router.post('/pay', auth.requireAuth, asyncHandler(async (req, res) => {
         ...payParams,
       }, '支付参数已生成');
     } catch (payErr) {
-      console.error('[微信支付] 统一下单失败:', payErr);
+      console.error('[微信支付] 统一下单失败:', payErr.message);
+      console.error('[微信支付] 错误详情:', JSON.stringify(payErr.response?.data || payErr));
       return R.error(res, '微信支付下单失败: ' + (payErr.message || '未知错误'));
     }
   } catch (e) {
